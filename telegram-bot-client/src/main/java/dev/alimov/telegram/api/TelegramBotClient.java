@@ -12,7 +12,6 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.lang.reflect.GenericDeclaration;
 import java.util.List;
 
 public class TelegramBotClient {
@@ -137,6 +136,171 @@ public class TelegramBotClient {
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter
                         )
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Boolean>>() {
+                        });
+    }
+
+    /**
+     * Use this method to send photos. On success, the sent Message is returned.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#sendphoto">Telegram Bot API - sendPhoto</a>
+     */
+    public Mono<Response<Message>> sendPhoto(
+            long chatId,
+            String photo,
+            @Nullable String businessConnectionId,
+            @Nullable Integer messageThreadId,
+            @Nullable String caption,
+            @Nullable ParseMode parseMode,
+            @Nullable List<MessageEntity> captionEntities,
+            @Nullable Boolean showCaptionAboveMedia,
+            @Nullable Boolean hasSpoiler,
+            @Nullable Boolean disableNotification,
+            @Nullable Boolean protectContent,
+            @Nullable Boolean allowPaidBroadcast,
+            @Nullable String messageEffectId,
+            @Nullable ReplyParameters replyParameters,
+            @Nullable Object replyMarkup
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("photo", photo);
+
+        if (businessConnectionId != null) {
+            inserter = inserter.with("business_connection_id", businessConnectionId);
+        }
+        if (messageThreadId != null) {
+            inserter = inserter.with("message_thread_id", String.valueOf(messageThreadId));
+        }
+        if (caption != null) {
+            inserter = inserter.with("caption", caption);
+        }
+        if (parseMode != null) {
+            inserter = inserter.with("parse_mode", parseMode.name());
+        }
+        if (captionEntities != null) {
+            inserter = inserter.with("caption_entities", toJson(captionEntities));
+        }
+        if (showCaptionAboveMedia != null) {
+            inserter = inserter.with("show_caption_above_media", String.valueOf(showCaptionAboveMedia));
+        }
+        if (hasSpoiler != null) {
+            inserter = inserter.with("has_spoiler", String.valueOf(hasSpoiler));
+        }
+        if (disableNotification != null) {
+            inserter = inserter.with("disable_notification", String.valueOf(disableNotification));
+        }
+        if (protectContent != null) {
+            inserter = inserter.with("protect_content", String.valueOf(protectContent));
+        }
+        if (allowPaidBroadcast != null) {
+            inserter = inserter.with("allow_paid_broadcast", String.valueOf(allowPaidBroadcast));
+        }
+        if (messageEffectId != null) {
+            inserter = inserter.with("message_effect_id", messageEffectId);
+        }
+        if (replyParameters != null) {
+            inserter = inserter.with("reply_parameters", toJson(replyParameters));
+        }
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> {
+                            return uriBuilder.pathSegment("sendPhoto")
+                                             .build();
+                        })
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to send a group of photos, videos, documents or audios as an album.
+     * On success, an array of Messages that were sent is returned.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#sendmediagroup">Telegram Bot API - sendMediaGroup</a>
+     */
+    public Mono<Response<List<Message>>> sendMediaGroup(
+            long chatId,
+            List<InputMedia> media,
+            @Nullable String businessConnectionId,
+            @Nullable Integer messageThreadId,
+            @Nullable Boolean disableNotification,
+            @Nullable Boolean protectContent,
+            @Nullable Boolean allowPaidBroadcast,
+            @Nullable String messageEffectId,
+            @Nullable ReplyParameters replyParameters
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("media", toJson(media));
+
+        if (businessConnectionId != null) {
+            inserter = inserter.with("business_connection_id", businessConnectionId);
+        }
+        if (messageThreadId != null) {
+            inserter = inserter.with("message_thread_id", String.valueOf(messageThreadId));
+        }
+        if (disableNotification != null) {
+            inserter = inserter.with("disable_notification", String.valueOf(disableNotification));
+        }
+        if (protectContent != null) {
+            inserter = inserter.with("protect_content", String.valueOf(protectContent));
+        }
+        if (allowPaidBroadcast != null) {
+            inserter = inserter.with("allow_paid_broadcast", String.valueOf(allowPaidBroadcast));
+        }
+        if (messageEffectId != null) {
+            inserter = inserter.with("message_effect_id", messageEffectId);
+        }
+        if (replyParameters != null) {
+            inserter = inserter.with("reply_parameters", toJson(replyParameters));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> {
+                            return uriBuilder.pathSegment("sendMediaGroup")
+                                             .build();
+                        })
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<List<Message>>>() {
+                        });
+    }
+
+    /**
+     * Use this method when you need to tell the user that something is happening on the bot's side.
+     * Returns True on success.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#sendchataction">Telegram Bot API - sendChatAction</a>
+     */
+    public Mono<Response<Boolean>> sendChatAction(
+            long chatId,
+            ChatAction action,
+            @Nullable String businessConnectionId,
+            @Nullable Integer messageThreadId
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("action", action.getValue());
+
+        if (businessConnectionId != null) {
+            inserter = inserter.with("business_connection_id", businessConnectionId);
+        }
+        if (messageThreadId != null) {
+            inserter = inserter.with("message_thread_id", String.valueOf(messageThreadId));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> {
+                            return uriBuilder.pathSegment("sendChatAction")
+                                             .build();
+                        })
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
                         .retrieve()
                         .bodyToMono(new ParameterizedTypeReference<Response<Boolean>>() {
                         });

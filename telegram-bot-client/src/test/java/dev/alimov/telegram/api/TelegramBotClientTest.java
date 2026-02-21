@@ -1,7 +1,10 @@
 package dev.alimov.telegram.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockserver.integration.ClientAndServer;
 import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
@@ -18,6 +21,8 @@ class TelegramBotClientTest {
 
     private static final String TOKEN = "123456:ABC-DEF";
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    public static final long CHAT_ID = 123L;
+    public static final long ANOTHER_CHAT_ID = 456L;
 
     private static ClientAndServer mockServer;
     private TelegramBotClient client;
@@ -413,6 +418,385 @@ class TelegramBotClientTest {
         );
 
         StepVerifier.create(client.sendMessage(999L, "test", null, null))
+                    .expectError()
+                    .verify();
+    }
+
+    // ========== Send Photo Tests ==========
+
+    @Test
+    void sendPhoto_basicPhoto() {
+        String responseBody = """
+                {
+                  "ok": true,
+                  "result": {
+                    "message_id": 50,
+                    "date": 1700000000,
+                    "chat": {"id": 123, "type": "private"},
+                    "photo": [
+                      {"file_id": "photo_small", "file_unique_id": "unique1", "width": 90, "height": 90, "file_size": 1000},
+                      {"file_id": "photo_large", "file_unique_id": "unique2", "width": 800, "height": 600, "file_size": 50000}
+                    ]
+                  }
+                }
+                """;
+
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendPhoto")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(200)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody(responseBody)
+        );
+
+        StepVerifier.create(client.sendPhoto(CHAT_ID, "https://live.staticflickr.com/3465/3717404335_a5472e3368_h.jpg",
+                                             null, null, null, null, null, null, null, null, null, null, null, null, null))
+                    .assertNext(response -> {
+                        assertTrue(response.isOk());
+                        assertNotNull(response.getResult());
+                        assertEquals(50L, response.getResult().messageId());
+                        assertNotNull(response.getResult().photo());
+                        assertEquals(2, response.getResult().photo().length);
+                    })
+                    .verifyComplete();
+
+        mockServer.verify(
+                HttpRequest.request()
+                           .withPath("/bot" + TOKEN + "/sendPhoto")
+        );
+    }
+
+    @Test
+    void sendPhoto_withCaptionAndParseMode() {
+        String responseBody = """
+                {
+                  "ok": true,
+                  "result": {
+                    "message_id": 51,
+                    "date": 1700000000,
+                    "chat": {"id": 123, "type": "private"},
+                    "photo": [
+                      {"file_id": "photo1", "file_unique_id": "u1", "width": 320, "height": 240}
+                    ],
+                    "caption": "<b>Nice photo</b>"
+                  }
+                }
+                """;
+
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendPhoto")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(200)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody(responseBody)
+        );
+
+        StepVerifier.create(client.sendPhoto(CHAT_ID, "AgACAgIAAxkBAAI", null, null,
+                                             "<b>Nice photo</b>", ParseMode.HTML, null, null, null, null, null, null, null, null, null))
+                    .assertNext(response -> {
+                        assertTrue(response.isOk());
+                        assertEquals(51L, response.getResult().messageId());
+                        assertEquals("<b>Nice photo</b>", response.getResult().caption());
+                    })
+                    .verifyComplete();
+    }
+
+    @Test
+    void sendPhoto_withReplyMarkup() {
+        String responseBody = """
+                {
+                  "ok": true,
+                  "result": {
+                    "message_id": 52,
+                    "date": 1700000000,
+                    "chat": {"id": 456, "type": "group", "title": "Test Group"},
+                    "photo": [
+                      {"file_id": "p1", "file_unique_id": "u1", "width": 100, "height": 100}
+                    ]
+                  }
+                }
+                """;
+
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendPhoto")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(200)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody(responseBody)
+        );
+
+        InlineKeyboardMarkup markup = InlineKeyboardMarkup.builder()
+                                                          .inlineKeyboard(List.of(
+                                                                  List.of(InlineKeyboardButton.builder().text("Like").callbackData("like").build())
+                                                          ))
+                                                          .build();
+
+        StepVerifier.create(client.sendPhoto(ANOTHER_CHAT_ID, "https://example.com/img.png",
+                                             null, null, null, null, null, null, null, null, null, null, null, null, markup))
+                    .assertNext(response -> {
+                        assertTrue(response.isOk());
+                        assertEquals(52L, response.getResult().messageId());
+                    })
+                    .verifyComplete();
+    }
+
+    @Test
+    void sendPhoto_httpError() {
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendPhoto")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(400)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody("{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: wrong file identifier/HTTP URL specified\"}")
+        );
+
+        StepVerifier.create(client.sendPhoto(CHAT_ID, "invalid_photo",
+                                             null, null, null, null, null, null, null, null, null, null, null, null, null))
+                    .expectError()
+                    .verify();
+    }
+
+    // ========== Send Media Group Tests ==========
+
+    @Test
+    void sendMediaGroup_withPhotos() {
+        String responseBody = """
+                {
+                  "ok": true,
+                  "result": [
+                    {
+                      "message_id": 60,
+                      "date": 1700000000,
+                      "chat": {"id": 123, "type": "private"},
+                      "photo": [{"file_id": "p1", "file_unique_id": "u1", "width": 100, "height": 100}]
+                    },
+                    {
+                      "message_id": 61,
+                      "date": 1700000000,
+                      "chat": {"id": 123, "type": "private"},
+                      "photo": [{"file_id": "p2", "file_unique_id": "u2", "width": 200, "height": 200}]
+                    }
+                  ]
+                }
+                """;
+
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendMediaGroup")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(200)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody(responseBody)
+        );
+
+        List<InputMedia> media = List.of(
+                new InputMediaPhoto("https://example.com/photo1.jpg"),
+                new InputMediaPhoto("https://example.com/photo2.jpg")
+        );
+
+        StepVerifier.create(client.sendMediaGroup(CHAT_ID, media, null, null, null, null, null, null, null))
+                    .assertNext(response -> {
+                        assertTrue(response.isOk());
+                        assertNotNull(response.getResult());
+                        assertEquals(2, response.getResult().size());
+                        assertEquals(60L, response.getResult().get(0).messageId());
+                        assertEquals(61L, response.getResult().get(1).messageId());
+                    })
+                    .verifyComplete();
+
+        mockServer.verify(
+                HttpRequest.request()
+                           .withPath("/bot" + TOKEN + "/sendMediaGroup")
+        );
+    }
+
+    @Test
+    void sendMediaGroup_withMixedMedia() {
+        String responseBody = """
+                {
+                  "ok": true,
+                  "result": [
+                    {
+                      "message_id": 70,
+                      "date": 1700000000,
+                      "chat": {"id": 123, "type": "private"},
+                      "photo": [{"file_id": "p1", "file_unique_id": "u1", "width": 100, "height": 100}]
+                    },
+                    {
+                      "message_id": 71,
+                      "date": 1700000000,
+                      "chat": {"id": 123, "type": "private"},
+                      "video": {"file_id": "v1", "file_unique_id": "vu1", "width": 1920, "height": 1080, "duration": 30}
+                    }
+                  ]
+                }
+                """;
+
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendMediaGroup")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(200)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody(responseBody)
+        );
+
+        List<InputMedia> media = List.of(
+                new InputMediaPhoto("https://example.com/photo.jpg", "Photo caption"),
+                new InputMediaVideo("https://example.com/video.mp4", "Video caption")
+        );
+
+        StepVerifier.create(client.sendMediaGroup(CHAT_ID, media, null, null, null, null, null, null, null))
+                    .assertNext(response -> {
+                        assertTrue(response.isOk());
+                        assertEquals(2, response.getResult().size());
+                        assertEquals(70L, response.getResult().get(0).messageId());
+                        assertEquals(71L, response.getResult().get(1).messageId());
+                    })
+                    .verifyComplete();
+    }
+
+    @Test
+    void sendMediaGroup_httpError() {
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendMediaGroup")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(400)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody("{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: invalid media\"}")
+        );
+
+        List<InputMedia> media = List.of(new InputMediaPhoto("invalid"));
+
+        StepVerifier.create(client.sendMediaGroup(CHAT_ID, media, null, null, null, null, null, null, null))
+                    .expectError()
+                    .verify();
+    }
+
+    // ========== Send Chat Action Tests ==========
+
+    @Test
+    void sendChatAction_typing() {
+        String responseBody = """
+                {
+                  "ok": true,
+                  "result": true
+                }
+                """;
+
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendChatAction")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(200)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody(responseBody)
+        );
+
+        StepVerifier.create(client.sendChatAction(CHAT_ID, ChatAction.TYPING, null, null))
+                    .assertNext(response -> {
+                        assertTrue(response.isOk());
+                        assertTrue(response.getResult());
+                    })
+                    .verifyComplete();
+
+        mockServer.verify(
+                HttpRequest.request()
+                           .withPath("/bot" + TOKEN + "/sendChatAction")
+        );
+    }
+
+    @Test
+    void sendChatAction_uploadPhoto() {
+        String responseBody = """
+                {
+                  "ok": true,
+                  "result": true
+                }
+                """;
+
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendChatAction")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(200)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody(responseBody)
+        );
+
+        StepVerifier.create(client.sendChatAction(CHAT_ID, ChatAction.UPLOAD_PHOTO, null, null))
+                    .assertNext(response -> {
+                        assertTrue(response.isOk());
+                        assertTrue(response.getResult());
+                    })
+                    .verifyComplete();
+    }
+
+    @Test
+    void sendChatAction_withMessageThreadId() {
+        String responseBody = """
+                {
+                  "ok": true,
+                  "result": true
+                }
+                """;
+
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendChatAction")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(200)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody(responseBody)
+        );
+
+        StepVerifier.create(client.sendChatAction(CHAT_ID, ChatAction.RECORD_VIDEO, null, 42))
+                    .assertNext(response -> {
+                        assertTrue(response.isOk());
+                        assertTrue(response.getResult());
+                    })
+                    .verifyComplete();
+    }
+
+    @Test
+    void sendChatAction_httpError() {
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendChatAction")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(400)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody("{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: chat not found\"}")
+        );
+
+        StepVerifier.create(client.sendChatAction(CHAT_ID, ChatAction.TYPING, null, null))
                     .expectError()
                     .verify();
     }
