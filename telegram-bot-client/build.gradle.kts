@@ -1,12 +1,12 @@
 dependencies {
-    implementation(libs.springBootStarterWebflux)
+    api(libs.springBootStarterWebflux)
 
     implementation(libs.slf4j)
 
     // Micrometer Prometheus registry for metrics scraping
     implementation(libs.micrometerRegistryPrometheus)
 
-    implementation(libs.jetbrainsAnnotations)
+    api(libs.jetbrainsAnnotations)
 
     // Guava for hashing utilities
     implementation(libs.guava)

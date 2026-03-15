@@ -1,4 +1,4 @@
-# Contributing to Telegram Bot Client
+# Contributing to Telegram Bot Framework
 
 Thank you for your interest in contributing! This guide explains how to get involved.
 
@@ -24,6 +24,17 @@ Thank you for your interest in contributing! This guide explains how to get invo
 
 - **Java 25** or later
 - **Gradle 9.1+** (wrapper included)
+- **Docker** (for Pulsar integration tests)
+
+## Project Structure
+
+```
+telegram-bot-client/        # Reactive HTTP client for Telegram Bot API
+telegram-bot-core/          # Shared interfaces (ReactiveQueue, UpdateHandler, BotResponse)
+telegram-bot-poller/        # Update polling and response dispatch
+telegram-bot-worker/        # Update processing pipeline
+telegram-bot-queue-pulsar/  # Apache Pulsar queue implementation
+```
 
 ## Code Guidelines
 
@@ -37,12 +48,40 @@ Thank you for your interest in contributing! This guide explains how to get invo
 
 All changes must include appropriate tests.
 
-- Write unit tests using **JUnit 5** and **MockServer**.
+### Unit Tests
+
+- Write unit tests using **JUnit 5** and **Mockito** (for interfaces) or **MockServer** (for HTTP clients).
 - Use **Reactor StepVerifier** to test reactive streams.
-- Run the full test suite before submitting:
+- Run unit tests:
+  ```bash
+  ./gradlew test -x telegram-bot-queue-pulsar:test
+  ```
+
+### Integration Tests
+
+The `telegram-bot-queue-pulsar` module uses **Testcontainers** to run Apache Pulsar in Docker during tests.
+
+- Start Pulsar manually for development:
+  ```bash
+  docker compose up -d
+  ```
+
+- Run all tests including integration:
   ```bash
   ./gradlew test
   ```
+
+- Stop Pulsar:
+  ```bash
+  docker compose down
+  ```
+
+### Test Conventions
+
+- Place unit tests alongside the module they test.
+- Name integration tests with the `IT` suffix (e.g., `PulsarReactiveQueueIT`).
+- Use `StepVerifier` for all reactive stream assertions.
+- Mock interfaces with Mockito; use MockServer for HTTP client tests.
 
 ## Submitting Changes
 

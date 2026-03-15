@@ -14,7 +14,7 @@ repositories {
 }
 
 subprojects {
-    apply(plugin = "java")
+    apply(plugin = "java-library")
     apply(plugin = "idea")
     apply(plugin = "com.vanniktech.maven.publish")
 

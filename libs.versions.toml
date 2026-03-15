@@ -12,7 +12,7 @@ mockito = "5.10.0"
 junitJupiter = "5.12.2"
 mockserver = "5.15.0"
 tableFormat = "1.2.4"
-
+pulsar = "3.3.3"
 
 
 [libraries]
@@ -39,6 +39,9 @@ junitJupiterEngine = { group = "org.junit.jupiter", name = "junit-jupiter-engine
 mockitoCore = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
 mockitoJunitJupiter = { group = "org.mockito", name = "mockito-junit-jupiter", version.ref = "mockito" }
 junitPlatformLauncher = { group = "org.junit.platform", name = "junit-platform-launcher" }
+
+# Pulsar
+pulsarClient = { group = "org.apache.pulsar", name = "pulsar-client", version.ref = "pulsar" }
 
 # MockServer
 mockserverNetty = { group = "org.mock-server", name = "mockserver-netty", version.ref = "mockserver" }
