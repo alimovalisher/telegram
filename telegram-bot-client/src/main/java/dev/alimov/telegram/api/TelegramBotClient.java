@@ -306,6 +306,598 @@ public class TelegramBotClient {
                         });
     }
 
+    /**
+     * Use this method to send text messages with any reply markup type.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#sendmessage">Telegram Bot API - sendMessage</a>
+     */
+    public Mono<Response<Message>> sendMessage(
+            long chatId,
+            String text,
+            @Nullable ParseMode parseMode,
+            @Nullable Object replyMarkup,
+            @Nullable List<MessageEntity> entities,
+            @Nullable Boolean disableNotification,
+            @Nullable Boolean protectContent
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("text", text);
+        if (parseMode != null) {
+            inserter = inserter.with("parse_mode", parseMode.name());
+        }
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+        if (entities != null) {
+            inserter = inserter.with("entities", toJson(entities));
+        }
+        if (disableNotification != null) {
+            inserter = inserter.with("disable_notification", String.valueOf(disableNotification));
+        }
+        if (protectContent != null) {
+            inserter = inserter.with("protect_content", String.valueOf(protectContent));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendMessage").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to send general files.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#senddocument">Telegram Bot API - sendDocument</a>
+     */
+    public Mono<Response<Message>> sendDocument(
+            long chatId,
+            String document,
+            @Nullable String caption,
+            @Nullable ParseMode parseMode,
+            @Nullable Object replyMarkup,
+            @Nullable Boolean disableNotification,
+            @Nullable Boolean protectContent
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("document", document);
+        if (caption != null) {
+            inserter = inserter.with("caption", caption);
+        }
+        if (parseMode != null) {
+            inserter = inserter.with("parse_mode", parseMode.name());
+        }
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+        if (disableNotification != null) {
+            inserter = inserter.with("disable_notification", String.valueOf(disableNotification));
+        }
+        if (protectContent != null) {
+            inserter = inserter.with("protect_content", String.valueOf(protectContent));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendDocument").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to send video files.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#sendvideo">Telegram Bot API - sendVideo</a>
+     */
+    public Mono<Response<Message>> sendVideo(
+            long chatId,
+            String video,
+            @Nullable String caption,
+            @Nullable ParseMode parseMode,
+            @Nullable Integer duration,
+            @Nullable Integer width,
+            @Nullable Integer height,
+            @Nullable Boolean supportsStreaming,
+            @Nullable Boolean hasSpoiler,
+            @Nullable Object replyMarkup,
+            @Nullable Boolean disableNotification,
+            @Nullable Boolean protectContent
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("video", video);
+        if (caption != null) {
+            inserter = inserter.with("caption", caption);
+        }
+        if (parseMode != null) {
+            inserter = inserter.with("parse_mode", parseMode.name());
+        }
+        if (duration != null) {
+            inserter = inserter.with("duration", String.valueOf(duration));
+        }
+        if (width != null) {
+            inserter = inserter.with("width", String.valueOf(width));
+        }
+        if (height != null) {
+            inserter = inserter.with("height", String.valueOf(height));
+        }
+        if (supportsStreaming != null) {
+            inserter = inserter.with("supports_streaming", String.valueOf(supportsStreaming));
+        }
+        if (hasSpoiler != null) {
+            inserter = inserter.with("has_spoiler", String.valueOf(hasSpoiler));
+        }
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+        if (disableNotification != null) {
+            inserter = inserter.with("disable_notification", String.valueOf(disableNotification));
+        }
+        if (protectContent != null) {
+            inserter = inserter.with("protect_content", String.valueOf(protectContent));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendVideo").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to send audio files.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#sendaudio">Telegram Bot API - sendAudio</a>
+     */
+    public Mono<Response<Message>> sendAudio(
+            long chatId,
+            String audio,
+            @Nullable String caption,
+            @Nullable ParseMode parseMode,
+            @Nullable Integer duration,
+            @Nullable String performer,
+            @Nullable String title,
+            @Nullable Object replyMarkup,
+            @Nullable Boolean disableNotification,
+            @Nullable Boolean protectContent
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("audio", audio);
+        if (caption != null) {
+            inserter = inserter.with("caption", caption);
+        }
+        if (parseMode != null) {
+            inserter = inserter.with("parse_mode", parseMode.name());
+        }
+        if (duration != null) {
+            inserter = inserter.with("duration", String.valueOf(duration));
+        }
+        if (performer != null) {
+            inserter = inserter.with("performer", performer);
+        }
+        if (title != null) {
+            inserter = inserter.with("title", title);
+        }
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+        if (disableNotification != null) {
+            inserter = inserter.with("disable_notification", String.valueOf(disableNotification));
+        }
+        if (protectContent != null) {
+            inserter = inserter.with("protect_content", String.valueOf(protectContent));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendAudio").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to send audio files that the client should display as a playable voice message.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#sendvoice">Telegram Bot API - sendVoice</a>
+     */
+    public Mono<Response<Message>> sendVoice(
+            long chatId,
+            String voice,
+            @Nullable String caption,
+            @Nullable ParseMode parseMode,
+            @Nullable Integer duration,
+            @Nullable Object replyMarkup,
+            @Nullable Boolean disableNotification,
+            @Nullable Boolean protectContent
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("voice", voice);
+        if (caption != null) {
+            inserter = inserter.with("caption", caption);
+        }
+        if (parseMode != null) {
+            inserter = inserter.with("parse_mode", parseMode.name());
+        }
+        if (duration != null) {
+            inserter = inserter.with("duration", String.valueOf(duration));
+        }
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+        if (disableNotification != null) {
+            inserter = inserter.with("disable_notification", String.valueOf(disableNotification));
+        }
+        if (protectContent != null) {
+            inserter = inserter.with("protect_content", String.valueOf(protectContent));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendVoice").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to send static .WEBP, animated .TGS, or video .WEBM stickers.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#sendsticker">Telegram Bot API - sendSticker</a>
+     */
+    public Mono<Response<Message>> sendSticker(
+            long chatId,
+            String sticker,
+            @Nullable String emoji,
+            @Nullable Object replyMarkup,
+            @Nullable Boolean disableNotification,
+            @Nullable Boolean protectContent
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("sticker", sticker);
+        if (emoji != null) {
+            inserter = inserter.with("emoji", emoji);
+        }
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+        if (disableNotification != null) {
+            inserter = inserter.with("disable_notification", String.valueOf(disableNotification));
+        }
+        if (protectContent != null) {
+            inserter = inserter.with("protect_content", String.valueOf(protectContent));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendSticker").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to send point on the map.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#sendlocation">Telegram Bot API - sendLocation</a>
+     */
+    public Mono<Response<Message>> sendLocation(
+            long chatId,
+            double latitude,
+            double longitude,
+            @Nullable Integer livePeriod,
+            @Nullable Integer heading,
+            @Nullable Integer proximityAlertRadius,
+            @Nullable Object replyMarkup,
+            @Nullable Boolean disableNotification,
+            @Nullable Boolean protectContent
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("latitude", String.valueOf(latitude))
+                                                                   .with("longitude", String.valueOf(longitude));
+        if (livePeriod != null) {
+            inserter = inserter.with("live_period", String.valueOf(livePeriod));
+        }
+        if (heading != null) {
+            inserter = inserter.with("heading", String.valueOf(heading));
+        }
+        if (proximityAlertRadius != null) {
+            inserter = inserter.with("proximity_alert_radius", String.valueOf(proximityAlertRadius));
+        }
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+        if (disableNotification != null) {
+            inserter = inserter.with("disable_notification", String.valueOf(disableNotification));
+        }
+        if (protectContent != null) {
+            inserter = inserter.with("protect_content", String.valueOf(protectContent));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendLocation").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to send phone contacts.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#sendcontact">Telegram Bot API - sendContact</a>
+     */
+    public Mono<Response<Message>> sendContact(
+            long chatId,
+            String phoneNumber,
+            String firstName,
+            @Nullable String lastName,
+            @Nullable String vcard,
+            @Nullable Object replyMarkup,
+            @Nullable Boolean disableNotification,
+            @Nullable Boolean protectContent
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("phone_number", phoneNumber)
+                                                                   .with("first_name", firstName);
+        if (lastName != null) {
+            inserter = inserter.with("last_name", lastName);
+        }
+        if (vcard != null) {
+            inserter = inserter.with("vcard", vcard);
+        }
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+        if (disableNotification != null) {
+            inserter = inserter.with("disable_notification", String.valueOf(disableNotification));
+        }
+        if (protectContent != null) {
+            inserter = inserter.with("protect_content", String.valueOf(protectContent));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendContact").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to forward messages of any kind.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#forwardmessage">Telegram Bot API - forwardMessage</a>
+     */
+    public Mono<Response<Message>> forwardMessage(
+            long chatId,
+            long fromChatId,
+            long messageId,
+            @Nullable Boolean disableNotification,
+            @Nullable Boolean protectContent
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("from_chat_id", String.valueOf(fromChatId))
+                                                                   .with("message_id", String.valueOf(messageId));
+        if (disableNotification != null) {
+            inserter = inserter.with("disable_notification", String.valueOf(disableNotification));
+        }
+        if (protectContent != null) {
+            inserter = inserter.with("protect_content", String.valueOf(protectContent));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("forwardMessage").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to copy messages of any kind.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#copymessage">Telegram Bot API - copyMessage</a>
+     */
+    public Mono<Response<MessageId>> copyMessage(
+            long chatId,
+            long fromChatId,
+            long messageId,
+            @Nullable String caption,
+            @Nullable ParseMode parseMode,
+            @Nullable Object replyMarkup,
+            @Nullable Boolean disableNotification,
+            @Nullable Boolean protectContent
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("from_chat_id", String.valueOf(fromChatId))
+                                                                   .with("message_id", String.valueOf(messageId));
+        if (caption != null) {
+            inserter = inserter.with("caption", caption);
+        }
+        if (parseMode != null) {
+            inserter = inserter.with("parse_mode", parseMode.name());
+        }
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+        if (disableNotification != null) {
+            inserter = inserter.with("disable_notification", String.valueOf(disableNotification));
+        }
+        if (protectContent != null) {
+            inserter = inserter.with("protect_content", String.valueOf(protectContent));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("copyMessage").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<MessageId>>() {
+                        });
+    }
+
+    /**
+     * Use this method to edit text and game messages.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#editmessagetext">Telegram Bot API - editMessageText</a>
+     */
+    public Mono<Response<Message>> editMessageText(
+            long chatId,
+            long messageId,
+            String text,
+            @Nullable ParseMode parseMode,
+            @Nullable List<MessageEntity> entities,
+            @Nullable Object replyMarkup
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("message_id", String.valueOf(messageId))
+                                                                   .with("text", text);
+        if (parseMode != null) {
+            inserter = inserter.with("parse_mode", parseMode.name());
+        }
+        if (entities != null) {
+            inserter = inserter.with("entities", toJson(entities));
+        }
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("editMessageText").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to edit captions of messages.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#editmessagecaption">Telegram Bot API - editMessageCaption</a>
+     */
+    public Mono<Response<Message>> editMessageCaption(
+            long chatId,
+            long messageId,
+            @Nullable String caption,
+            @Nullable ParseMode parseMode,
+            @Nullable List<MessageEntity> captionEntities,
+            @Nullable Object replyMarkup
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("message_id", String.valueOf(messageId));
+        if (caption != null) {
+            inserter = inserter.with("caption", caption);
+        }
+        if (parseMode != null) {
+            inserter = inserter.with("parse_mode", parseMode.name());
+        }
+        if (captionEntities != null) {
+            inserter = inserter.with("caption_entities", toJson(captionEntities));
+        }
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("editMessageCaption").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to edit only the reply markup of messages.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#editmessagereplymarkup">Telegram Bot API - editMessageReplyMarkup</a>
+     */
+    public Mono<Response<Message>> editMessageReplyMarkup(
+            long chatId,
+            long messageId,
+            @Nullable Object replyMarkup
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("message_id", String.valueOf(messageId));
+        if (replyMarkup != null) {
+            inserter = inserter.with("reply_markup", toJson(replyMarkup));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("editMessageReplyMarkup").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
+                        });
+    }
+
+    /**
+     * Use this method to delete a message.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#deletemessage">Telegram Bot API - deleteMessage</a>
+     */
+    public Mono<Response<Boolean>> deleteMessage(long chatId, long messageId) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("message_id", String.valueOf(messageId));
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("deleteMessage").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Boolean>>() {
+                        });
+    }
+
+    /**
+     * Use this method to send answers to callback queries sent from inline keyboards.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#answercallbackquery">Telegram Bot API - answerCallbackQuery</a>
+     */
+    public Mono<Response<Boolean>> answerCallbackQuery(
+            String callbackQueryId,
+            @Nullable String text,
+            @Nullable Boolean showAlert,
+            @Nullable String url,
+            @Nullable Integer cacheTime
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("callback_query_id", callbackQueryId);
+        if (text != null) {
+            inserter = inserter.with("text", text);
+        }
+        if (showAlert != null) {
+            inserter = inserter.with("show_alert", String.valueOf(showAlert));
+        }
+        if (url != null) {
+            inserter = inserter.with("url", url);
+        }
+        if (cacheTime != null) {
+            inserter = inserter.with("cache_time", String.valueOf(cacheTime));
+        }
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("answerCallbackQuery").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .retrieve()
+                        .bodyToMono(new ParameterizedTypeReference<Response<Boolean>>() {
+                        });
+    }
+
     private <T> String toJson(T object) {
         try {
             return objectMapper.writeValueAsString(object);

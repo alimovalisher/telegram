@@ -11,14 +11,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Start Pulsar
+        run: docker compose -f telegram-bot-env/docker-compose.yml up -d
+
+      - name: Wait for Pulsar
+        run: |
+          echo "Waiting for Pulsar to be healthy..."
+          for i in $(seq 1 40); do
+            if docker exec pulsar-standalone bin/pulsar-admin brokers healthcheck 2>/dev/null; then
+              echo "Pulsar is healthy after attempt $i"
+              exit 0
+            fi
+            echo "Attempt $i/40 - waiting 5s..."
+            sleep 5
+          done
+          echo "Pulsar failed to become healthy"
+          docker logs pulsar-standalone
+          exit 1
+
       - name: Set up Java 25
         uses: actions/setup-java@v4
         with:
           distribution: oracle
           java-version: '25'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
       - name: Build and test
         run: ./gradlew build
+
+      - name: Stop Pulsar
+        if: always()
+        run: docker compose -f telegram-bot-env/docker-compose.yml down
