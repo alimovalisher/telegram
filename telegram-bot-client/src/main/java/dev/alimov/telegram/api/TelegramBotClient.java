@@ -864,6 +864,54 @@ public class TelegramBotClient {
     }
 
     /**
+     * Use this method to send a message draft, allowing partial messages to be streamed to a user while being generated.
+     * On success, the sent Message is returned.
+     *
+     * @see <a href="https://core.telegram.org/bots/api#sendmessagedraft">Telegram Bot API - sendMessageDraft</a>
+     */
+    public Mono<Response<Boolean>> sendMessageDraft(
+            long chatId,
+            @Nullable Integer messageThreadId,
+            int draftId,
+            String text,
+            @Nullable ParseMode parseMode,
+            @Nullable List<MessageEntity> entities
+    ) {
+        BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("chat_id", String.valueOf(chatId))
+                                                                   .with("draft_id", String.valueOf(draftId))
+                                                                   .with("text", text);
+
+        if (messageThreadId != null) {
+            inserter = inserter.with("message_thread_id", String.valueOf(messageThreadId));
+        }
+
+        if (parseMode != null) {
+            inserter = inserter.with("parse_mode", parseMode.name());
+        }
+        if (entities != null) {
+            inserter = inserter.with("entities", toJson(entities));
+        }
+
+
+        return webClient.post()
+                        .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendMessageDraft").build())
+                        .contentType(MediaType.MULTIPART_FORM_DATA)
+                        .body(inserter)
+                        .exchangeToMono(clientResponse -> {
+                            if (clientResponse.statusCode().is2xxSuccessful()) {
+                                return clientResponse.bodyToMono(new ParameterizedTypeReference<Response<Boolean>>() {
+                                });
+                            } else {
+                                log.error("Failed to send message draft: {}", clientResponse.statusCode());
+
+                                return clientResponse.bodyToMono(String.class)
+                                                     .flatMap(error -> Mono.error(new RuntimeException("Failed to send message draft. error: '%s'".formatted(error))));
+                            }
+                        });
+
+    }
+
+    /**
      * Use this method to send answers to callback queries sent from inline keyboards.
      *
      * @see <a href="https://core.telegram.org/bots/api#answercallbackquery">Telegram Bot API - answerCallbackQuery</a>
