@@ -801,6 +801,150 @@ class TelegramBotClientTest {
                     .verify();
     }
 
+    // ========== Send Message Draft Tests ==========
+
+    @Test
+    void sendMessageDraft_basicDraft() {
+        String responseBody = """
+                {
+                  "ok": true,
+                  "result": true
+                }
+                """;
+
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendMessageDraft")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(200)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody(responseBody)
+        );
+
+        StepVerifier.create(client.sendMessageDraft(CHAT_ID, null, 1, "Streaming partial text...",
+                                                    null, null))
+                    .assertNext(response -> {
+                        assertTrue(response.isOk());
+                        assertNotNull(response.getResult());
+                    })
+                    .verifyComplete();
+
+        mockServer.verify(
+                HttpRequest.request()
+                           .withPath("/bot" + TOKEN + "/sendMessageDraft")
+        );
+    }
+
+    @Test
+    void sendMessageDraft_withParseModeAndEntities() {
+        String responseBody = """
+                {
+                  "ok": true,
+                  "result": true
+                }
+                """;
+
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendMessageDraft")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(200)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody(responseBody)
+        );
+
+        StepVerifier.create(client.sendMessageDraft(CHAT_ID, null, 1, "<b>bold draft</b>",
+                                                    ParseMode.HTML, null))
+                    .assertNext(response -> {
+                        assertTrue(response.isOk());
+                    })
+                    .verifyComplete();
+    }
+
+    @Test
+    void sendMessageDraft_withLinkPreviewOptions() {
+        String responseBody = """
+                {
+                  "ok": true,
+                  "result": true
+                }
+                """;
+
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendMessageDraft")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(200)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody(responseBody)
+        );
+
+        StepVerifier.create(client.sendMessageDraft(CHAT_ID, null, 1, "Check this link",
+                                                    null, null))
+                    .assertNext(response -> {
+                        assertTrue(response.isOk());
+                    })
+                    .verifyComplete();
+    }
+
+    @Test
+    void sendMessageDraft_withReplyMarkup() {
+        String responseBody = """
+                {
+                  "ok": true,
+                  "result": true
+                }
+                """;
+
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendMessageDraft")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(200)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody(responseBody)
+        );
+
+        InlineKeyboardMarkup markup = InlineKeyboardMarkup.builder()
+                                                          .inlineKeyboard(List.of(
+                                                                  List.of(InlineKeyboardButton.builder().text("OK").callbackData("ok").build())
+                                                          ))
+                                                          .build();
+
+        StepVerifier.create(client.sendMessageDraft(CHAT_ID, null, 1, "Draft with keyboard",
+                                                    null, null))
+                    .assertNext(response -> {
+                        assertTrue(response.isOk());
+                    })
+                    .verifyComplete();
+    }
+
+    @Test
+    void sendMessageDraft_httpError() {
+        mockServer.when(
+                HttpRequest.request()
+                           .withMethod("POST")
+                           .withPath("/bot" + TOKEN + "/sendMessageDraft")
+        ).respond(
+                HttpResponse.response()
+                            .withStatusCode(400)
+                            .withContentType(MediaType.APPLICATION_JSON)
+                            .withBody("{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: chat not found\"}")
+        );
+
+        StepVerifier.create(client.sendMessageDraft(999L, null, 1, "test", null, null))
+                    .expectError()
+                    .verify();
+    }
+
     @Test
     void sendMessage_withParseModeAndKeyboard() {
         String responseBody = """
