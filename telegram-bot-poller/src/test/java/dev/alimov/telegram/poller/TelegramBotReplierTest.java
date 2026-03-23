@@ -1,19 +1,12 @@
 package dev.alimov.telegram.poller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.alimov.telegram.api.ChatAction;
-import dev.alimov.telegram.api.InputMedia;
-import dev.alimov.telegram.api.InputMediaPhoto;
-import dev.alimov.telegram.api.ParseMode;
-import dev.alimov.telegram.api.TelegramBotClient;
-import dev.alimov.telegram.api.Update;
+import dev.alimov.telegram.api.*;
 import dev.alimov.telegram.core.BotResponse;
-import dev.alimov.telegram.core.ReactiveQueue;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+import dev.alimov.telegram.core.ReactiveChannel;
+import dev.alimov.telegram.core.ReadableReactiveChannel;
+import dev.alimov.telegram.core.WritableReactiveChannel;
+import org.junit.jupiter.api.*;
 import org.mockserver.integration.ClientAndServer;
 import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
@@ -28,10 +21,11 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockserver.integration.ClientAndServer.startClientAndServer;
 
-class TelegramUpdatePollerTest {
+class TelegramBotReplierTest {
 
     private static final String TOKEN = "123456:ABC-DEF";
     private static final ObjectMapper objectMapper = new ObjectMapper();
@@ -48,10 +42,38 @@ class TelegramUpdatePollerTest {
     private static ClientAndServer mockServer;
     private TelegramBotClient botClient;
 
+    @BeforeAll
+    static void startServer() {
+        mockServer = startClientAndServer(0);
+    }
+
+    @AfterAll
+    static void stopServer() {
+        mockServer.stop();
+    }
+
+    private static HttpResponse ok(String body) {
+        return HttpResponse.response().withStatusCode(200)
+                           .withContentType(MediaType.APPLICATION_JSON).withBody(body);
+    }
+
+    @BeforeEach
+    void setUp() {
+        mockServer.reset();
+        String mockBaseUrl = "http://localhost:" + mockServer.getPort();
+        botClient = new TelegramBotClient(mockBaseUrl, TOKEN, objectMapper, WebClient.builder().build());
+    }
+
+    // ── helpers ──────────────────────────────────────────────────────────
+
+    private TelegramBotReplier createReplier(ReadableReactiveChannel<BotResponse> outbound) {
+        return new TelegramBotReplier(botClient, outbound, Duration.ofMillis(100), Schedulers.immediate());
+    }
+
     /**
      * Simple in-memory queue — no Mockito needed
      */
-    static class TestQueue<T> implements ReactiveQueue<T> {
+    static class TestChannel<T> implements ReadableReactiveChannel<T>, WritableReactiveChannel<T> {
         private final List<T> published = new CopyOnWriteArrayList<>();
         private final reactor.core.publisher.Sinks.Many<T> sink =
                 reactor.core.publisher.Sinks.many().multicast().onBackpressureBuffer();
@@ -69,8 +91,8 @@ class TelegramUpdatePollerTest {
         }
 
         @Override
-        public Mono<Void> close() {
-            return Mono.empty();
+        public void close() {
+
         }
 
         public List<T> getPublished() {
@@ -78,89 +100,7 @@ class TelegramUpdatePollerTest {
         }
     }
 
-    @BeforeAll
-    static void startServer() {
-        mockServer = startClientAndServer(0);
-    }
-
-    @AfterAll
-    static void stopServer() {
-        mockServer.stop();
-    }
-
-    @BeforeEach
-    void setUp() {
-        mockServer.reset();
-        String mockBaseUrl = "http://localhost:" + mockServer.getPort();
-        botClient = new TelegramBotClient(mockBaseUrl, TOKEN, objectMapper, WebClient.builder().build());
-    }
-
-    // ── helpers ──────────────────────────────────────────────────────────
-
-    private TelegramUpdatePoller createPoller(ReactiveQueue<Update> inbound, ReactiveQueue<BotResponse> outbound) {
-        return new TelegramUpdatePoller(botClient, inbound, outbound,
-                                        Duration.ofMillis(100), 100, 0, List.of(), Schedulers.immediate());
-    }
-
-    private static HttpResponse ok(String body) {
-        return HttpResponse.response().withStatusCode(200)
-                           .withContentType(MediaType.APPLICATION_JSON).withBody(body);
-    }
-
     // ── tests ────────────────────────────────────────────────────────────
-
-    @Nested
-    class PollUpdates {
-
-        @Test
-        void publishesUpdatesToInboundQueue() {
-            mockServer.when(
-                              HttpRequest.request().withMethod("GET").withPath("/bot" + TOKEN + "/getUpdates")
-                      )
-                      .respond(ok("""
-                                          {"ok":true,"result":[{"update_id":100,"message":{"message_id":1,"date":1000,"chat":{"id":123,"type":"private"},"text":"hello"}}]}
-                                          """));
-
-            var inbound = new TestQueue<Update>();
-            var outbound = new TestQueue<BotResponse>();
-            var poller = createPoller(inbound, outbound);
-
-            StepVerifier.create(poller.pollUpdates())
-                        .assertNext(u -> assertEquals(100L, u.updateId()))
-                        .verifyComplete();
-
-            assertEquals(1, inbound.getPublished().size());
-            assertEquals("hello", inbound.getPublished().get(0).message().text());
-        }
-
-        @Test
-        void emptyResult_publishesNothing() {
-            mockServer.when(
-                              HttpRequest.request().withMethod("GET").withPath("/bot" + TOKEN + "/getUpdates")
-                      )
-                      .respond(ok("{\"ok\":true,\"result\":[]}"));
-
-            var inbound = new TestQueue<Update>();
-            var poller = createPoller(inbound, new TestQueue<>());
-
-            StepVerifier.create(poller.pollUpdates()).verifyComplete();
-            assertTrue(inbound.getPublished().isEmpty());
-        }
-
-        @Test
-        void errorResponse_recoversGracefully() {
-            mockServer.when(
-                              HttpRequest.request().withMethod("GET").withPath("/bot" + TOKEN + "/getUpdates")
-                      )
-                      .respond(ok("{\"ok\":false,\"error_code\":409,\"description\":\"Conflict\"}"));
-
-            var inbound = new TestQueue<Update>();
-            var poller = createPoller(inbound, new TestQueue<>());
-
-            StepVerifier.create(poller.pollUpdates()).verifyComplete();
-            assertTrue(inbound.getPublished().isEmpty());
-        }
-    }
 
     @Nested
     class DispatchText {
@@ -169,7 +109,7 @@ class TelegramUpdatePollerTest {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/sendMessage"))
                       .respond(ok(OK_MSG));
 
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.SendMessage(123L, "reply", ParseMode.HTML)))
                         .expectNextCount(1).verifyComplete();
 
@@ -183,7 +123,7 @@ class TelegramUpdatePollerTest {
         void sendPhoto() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/sendPhoto"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.SendPhoto(10L, "photo_id", "cap", ParseMode.HTML)))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/sendPhoto"));
@@ -193,7 +133,7 @@ class TelegramUpdatePollerTest {
         void sendDocument() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/sendDocument"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.SendDocument(11L, "doc_id")))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/sendDocument"));
@@ -203,7 +143,7 @@ class TelegramUpdatePollerTest {
         void sendVideo() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/sendVideo"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.SendVideo(12L, "vid_id")))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/sendVideo"));
@@ -213,7 +153,7 @@ class TelegramUpdatePollerTest {
         void sendAudio() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/sendAudio"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.SendAudio(8L, "audio_id")))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/sendAudio"));
@@ -223,7 +163,7 @@ class TelegramUpdatePollerTest {
         void sendVoice() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/sendVoice"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.SendVoice(9L, "voice_id")))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/sendVoice"));
@@ -233,7 +173,7 @@ class TelegramUpdatePollerTest {
         void sendSticker() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/sendSticker"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.SendSticker(13L, "sticker_id")))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/sendSticker"));
@@ -243,7 +183,7 @@ class TelegramUpdatePollerTest {
         void sendLocation() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/sendLocation"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.SendLocation(14L, 51.5, -0.1)))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/sendLocation"));
@@ -253,7 +193,7 @@ class TelegramUpdatePollerTest {
         void sendContact() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/sendContact"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.SendContact(15L, "+123", "John")))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/sendContact"));
@@ -263,7 +203,7 @@ class TelegramUpdatePollerTest {
         void sendMediaGroup() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/sendMediaGroup"))
                       .respond(ok(OK_MSG_LIST));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             var media = List.<InputMedia>of(new InputMediaPhoto("p1"), new InputMediaPhoto("p2"));
             StepVerifier.create(poller.dispatch(new BotResponse.SendMediaGroup(16L, media)))
                         .expectNextCount(1).verifyComplete();
@@ -277,7 +217,7 @@ class TelegramUpdatePollerTest {
         void editMessageText() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/editMessageText"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.EditMessageText(18L, 50L, "edited")))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/editMessageText"));
@@ -287,7 +227,7 @@ class TelegramUpdatePollerTest {
         void editMessageCaption() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/editMessageCaption"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.EditMessageCaption(19L, 51L, "new cap", ParseMode.HTML)))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/editMessageCaption"));
@@ -297,7 +237,7 @@ class TelegramUpdatePollerTest {
         void editMessageReplyMarkup() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/editMessageReplyMarkup"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.EditMessageReplyMarkup(20L, 52L, null)))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/editMessageReplyMarkup"));
@@ -310,7 +250,7 @@ class TelegramUpdatePollerTest {
         void deleteMessage() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/deleteMessage"))
                       .respond(ok(OK_BOOL));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.DeleteMessage(21L, 53L)))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/deleteMessage"));
@@ -320,7 +260,7 @@ class TelegramUpdatePollerTest {
         void answerCallbackQuery() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/answerCallbackQuery"))
                       .respond(ok(OK_BOOL));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.AnswerCallbackQuery("cb-1", "ok", true)))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/answerCallbackQuery"));
@@ -330,7 +270,7 @@ class TelegramUpdatePollerTest {
         void sendChatAction() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/sendChatAction"))
                       .respond(ok(OK_BOOL));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.SendChatAction(17L, ChatAction.TYPING)))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/sendChatAction"));
@@ -343,7 +283,7 @@ class TelegramUpdatePollerTest {
         void forwardMessage() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/forwardMessage"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.ForwardMessage(22L, 23L, 99L)))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/forwardMessage"));
@@ -353,7 +293,7 @@ class TelegramUpdatePollerTest {
         void copyMessage() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/copyMessage"))
                       .respond(ok(OK_MSG_ID));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.CopyMessage(24L, 25L, 100L)))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/copyMessage"));
@@ -363,7 +303,7 @@ class TelegramUpdatePollerTest {
         void sendInvoice() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/sendInvoice"))
                       .respond(ok(OK_MSG));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.SendInvoice(26L, "Title", "Desc", "payload", 1000, "USD")))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/sendInvoice"));
@@ -373,31 +313,10 @@ class TelegramUpdatePollerTest {
         void answerPreCheckoutQuery() {
             mockServer.when(HttpRequest.request().withMethod("POST").withPath("/bot" + TOKEN + "/answerPreCheckoutQuery"))
                       .respond(ok(OK_BOOL));
-            var poller = createPoller(new TestQueue<>(), new TestQueue<>());
+            TelegramBotReplier poller = createReplier(new TestChannel<>());
             StepVerifier.create(poller.dispatch(new BotResponse.AnswerPreCheckoutQuery("pcq-1", true, null)))
                         .expectNextCount(1).verifyComplete();
             mockServer.verify(HttpRequest.request().withPath("/bot" + TOKEN + "/answerPreCheckoutQuery"));
-        }
-    }
-
-    @Nested
-    class Lifecycle {
-        @Test
-        void start_andDispose() {
-            mockServer.when(
-                    HttpRequest.request().withMethod("GET").withPath("/bot" + TOKEN + "/getUpdates")
-            ).respond(ok("{\"ok\":true,\"result\":[]}"));
-
-            var outbound = new TestQueue<BotResponse>();
-            // Use a real scheduler so Flux.interval doesn't block the test thread
-            var poller = new TelegramUpdatePoller(botClient, new TestQueue<>(), outbound,
-                                                  Duration.ofSeconds(1), 100, 0, List.of(), Schedulers.single());
-
-            poller.start();
-            assertFalse(poller.isDisposed());
-
-            poller.dispose();
-            assertTrue(poller.isDisposed());
         }
     }
 }

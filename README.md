@@ -7,30 +7,35 @@ A reactive, modular Java framework for building Telegram bots. Built on Spring W
 | Module                      | Description                                                        |
 |-----------------------------|--------------------------------------------------------------------|
 | `telegram-bot-client`       | Reactive HTTP client for the Telegram Bot API                      |
-| `telegram-bot-core`         | Shared interfaces: `ReactiveQueue`, `UpdateHandler`, `BotResponse` |
-| `telegram-bot-poller`       | Polls updates from Telegram and dispatches outbound responses      |
+| `telegram-bot-core`         | Shared interfaces: `ReactiveChannel`, `ReadableReactiveChannel`, `WritableReactiveChannel`, `UpdateHandler`, `BotResponse` |
+| `telegram-bot-poller`       | Polls updates from Telegram (`TelegramBotUpdatePoller`) and dispatches outbound responses (`TelegramBotReplier`) |
 | `telegram-bot-worker`       | Processes updates through a handler and publishes responses        |
-| `telegram-bot-queue-pulsar` | Apache Pulsar implementation of `ReactiveQueue`                    |
+| `telegram-bot-queue-pulsar` | Apache Pulsar implementation of `ReadableReactiveChannel` and `WritableReactiveChannel` |
 
 ## Architecture
 
-```
-Telegram API
-    │
-    ▼
-┌─────────────────────┐       ┌───────────────┐       ┌─────────────────────┐
-│  TelegramUpdatePoller│──────▶│ Inbound Queue │──────▶│ TelegramUpdateWorker│
-│  (polls updates,     │       │ (Update)      │       │ (calls UpdateHandler│
-│   sends responses)   │◀──────│               │       │  publishes responses│
-└─────────────────────┘       └───────────────┘       └──────────┬──────────┘
-    ▲                                                             │
-    │                          ┌───────────────┐                  │
-    └──────────────────────────│ Outbound Queue│◀─────────────────┘
-                               │ (BotResponse) │
-                               └───────────────┘
+```mermaid
+graph LR
+    TG[Telegram API]
+
+    Poller[TelegramBotUpdatePoller]
+    Replier[TelegramBotReplier]
+    Worker[TelegramUpdateWorker]
+
+    InW[WritableReactiveChannel\nUpdate]
+    InR[ReadableReactiveChannel\nUpdate]
+    OutW[WritableReactiveChannel\nBotResponse]
+    OutR[ReadableReactiveChannel\nBotResponse]
+
+    TG -- polls updates --> Poller
+    Poller -- publish --> InW
+    InR -- subscribe --> Worker
+    Worker -- publish --> OutW
+    OutR -- subscribe --> Replier
+    Replier -- sends responses --> TG
 ```
 
-The poller and worker communicate through `ReactiveQueue` — swap in any implementation (Pulsar, Kafka, in-memory).
+The poller, replier, and worker communicate through `ReadableReactiveChannel` and `WritableReactiveChannel` — swap in any implementation (Pulsar, Kafka, in-memory). Channels are split into readable and writable interfaces following the principle of interface segregation.
 
 ## Requirements
 
@@ -45,15 +50,15 @@ The poller and worker communicate through `ReactiveQueue` — swap in any implem
 ```kotlin
 dependencies {
     // Core client only
-    implementation("dev.alimov.telegram-bot:telegram-bot-client:1.2.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-client:1.3.0-SNAPSHOT")
 
     // Full framework
-    implementation("dev.alimov.telegram-bot:telegram-bot-core:1.2.0-SNAPSHOT")
-    implementation("dev.alimov.telegram-bot:telegram-bot-poller:1.2.0-SNAPSHOT")
-    implementation("dev.alimov.telegram-bot:telegram-bot-worker:1.2.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-core:1.3.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-poller:1.3.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-worker:1.3.0-SNAPSHOT")
 
     // Pulsar queue (optional)
-    implementation("dev.alimov.telegram-bot:telegram-bot-queue-pulsar:1.2.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-queue-pulsar:1.3.0-SNAPSHOT")
 }
 ```
 
@@ -64,7 +69,7 @@ dependencies {
 <dependency>
     <groupId>dev.alimov.telegram-bot</groupId>
     <artifactId>telegram-bot-core</artifactId>
-    <version>1.2.0-SNAPSHOT</version>
+    <version>1.3.0-SNAPSHOT</version>
 </dependency>
 ```
 
@@ -92,33 +97,49 @@ class Example {
 
 ```java
 public class Example {
-    public void queue(){
-        // Create queues
+    public void queue() throws Exception {
+        // Create Pulsar client, producer, and consumers
         PulsarClient pulsarClient = PulsarClient.builder().serviceUrl("pulsar://localhost:6650").build();
         ObjectMapper mapper = new ObjectMapper();
 
-        ReactiveQueue<Update> inbound = new PulsarReactiveQueue<>(
-                pulsarClient, "bot-updates", "poller-sub", mapper, Update.class);
-        ReactiveQueue<BotResponse> outbound = new PulsarReactiveQueue<>(
-                pulsarClient, "bot-responses", "poller-sub", mapper, BotResponse.class);
+        Producer<byte[]> updateProducer = pulsarClient.newProducer().topic("bot-updates").create();
+        Consumer<byte[]> updateConsumer = pulsarClient.newConsumer().topic("bot-updates")
+                .subscriptionName("worker-sub").subscribe();
+        Producer<byte[]> responseProducer = pulsarClient.newProducer().topic("bot-responses").create();
+        Consumer<byte[]> responseConsumer = pulsarClient.newConsumer().topic("bot-responses")
+                .subscriptionName("poller-sub").subscribe();
 
-        // Create poller
+        // Create channels (split into readable and writable)
+        WritableReactiveChannel<Update> inboundWriter =
+                new PulsarWritableReactiveChannel<>(mapper, updateProducer);
+        ReadableReactiveChannel<Update> inboundReader =
+                new PulsarReadableReactiveChannel<>(mapper, updateConsumer, Update.class);
+        WritableReactiveChannel<BotResponse> outboundWriter =
+                new PulsarWritableReactiveChannel<>(mapper, responseProducer);
+        ReadableReactiveChannel<BotResponse> outboundReader =
+                new PulsarReadableReactiveChannel<>(mapper, responseConsumer, BotResponse.class);
+
+        // Create poller (writes updates to inbound channel)
         TelegramBotClient client = new TelegramBotClient("YOUR_BOT_TOKEN");
-        TelegramUpdatePoller poller = new TelegramUpdatePoller(
-                client, inbound, outbound,
-                Duration.ofSeconds(1), 100, 30, List.of("message", "callback_query"));
-        poller.
+        Scheduler scheduler = Schedulers.boundedElastic();
+        TelegramBotUpdatePoller poller = new TelegramBotUpdatePoller(
+                client, inboundWriter,
+                Duration.ofSeconds(1), 100, 30, List.of("message", "callback_query"), scheduler);
+        poller.start();
 
-                start();
+        // Create replier (reads responses from outbound channel and sends them)
+        TelegramBotReplier replier = new TelegramBotReplier(
+                client, outboundReader, Duration.ofSeconds(1), scheduler);
+        replier.start();
 
-        // Create worker with your handler
+        // Create worker with your handler (reads updates, writes responses)
         UpdateHandler handler = update -> {
             String text = update.message().text();
             long chatId = update.message().chat().id();
             return Flux.just(new BotResponse.SendMessage(chatId, "Echo: " + text));
         };
 
-        TelegramUpdateWorker worker = new TelegramUpdateWorker(inbound, outbound, handler);
+        TelegramUpdateWorker worker = new TelegramUpdateWorker(inboundReader, outboundWriter, handler);
         worker.start();
     }
 }

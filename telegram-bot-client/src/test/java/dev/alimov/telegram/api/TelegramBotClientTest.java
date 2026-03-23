@@ -593,15 +593,16 @@ class TelegramBotClientTest {
                 """;
 
         mockServer.when(
-                HttpRequest.request()
-                           .withMethod("POST")
-                           .withPath("/bot" + TOKEN + "/sendMediaGroup")
-        ).respond(
-                HttpResponse.response()
-                            .withStatusCode(200)
-                            .withContentType(MediaType.APPLICATION_JSON)
-                            .withBody(responseBody)
-        );
+                          HttpRequest.request()
+                                     .withMethod("POST")
+                                     .withPath("/bot" + TOKEN + "/sendMediaGroup")
+                  )
+                  .respond(
+                          HttpResponse.response()
+                                      .withStatusCode(200)
+                                      .withContentType(MediaType.APPLICATION_JSON)
+                                      .withBody(responseBody)
+                  );
 
         List<InputMedia> media = List.of(
                 new InputMediaPhoto("https://example.com/photo1.jpg"),

@@ -3,9 +3,7 @@ package dev.alimov.telegram.worker;
 import dev.alimov.telegram.api.Chat;
 import dev.alimov.telegram.api.Message;
 import dev.alimov.telegram.api.Update;
-import dev.alimov.telegram.core.BotResponse;
-import dev.alimov.telegram.core.ReactiveQueue;
-import dev.alimov.telegram.core.UpdateHandler;
+import dev.alimov.telegram.core.*;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
@@ -33,7 +31,7 @@ class TelegramUpdateWorkerTest {
     /**
      * Simple in-memory queue — no Mockito needed
      */
-    static class TestQueue<T> implements ReactiveQueue<T> {
+    static class TestChannel<T> implements ReadableReactiveChannel<T>, WritableReactiveChannel<T> {
         private final List<T> published = new CopyOnWriteArrayList<>();
         private final Sinks.Many<T> sink = Sinks.many().multicast().onBackpressureBuffer();
 
@@ -50,8 +48,8 @@ class TelegramUpdateWorkerTest {
         }
 
         @Override
-        public Mono<Void> close() {
-            return Mono.empty();
+        public void close() {
+
         }
 
         public List<T> getPublished() {
@@ -60,8 +58,8 @@ class TelegramUpdateWorkerTest {
     }
 
     private TelegramUpdateWorker createWorker(
-            ReactiveQueue<Update> inbound,
-            ReactiveQueue<BotResponse> outbound,
+            ReadableReactiveChannel<Update> inbound,
+            WritableReactiveChannel<BotResponse> outbound,
             UpdateHandler handler
     ) {
         return new TelegramUpdateWorker(inbound, outbound, handler, Schedulers.immediate(), 4);
@@ -72,9 +70,9 @@ class TelegramUpdateWorkerTest {
 
         @Test
         void callsHandlerAndPublishesResponse() {
-            var outbound = new TestQueue<BotResponse>();
+            var outbound = new TestChannel<BotResponse>();
             UpdateHandler handler = update -> Flux.just(SAMPLE_RESPONSE);
-            var worker = createWorker(new TestQueue<>(), outbound, handler);
+            var worker = createWorker(new TestChannel<>(), outbound, handler);
 
             StepVerifier.create(worker.processUpdate(SAMPLE_UPDATE))
                         .expectNext(SAMPLE_RESPONSE)
@@ -89,9 +87,9 @@ class TelegramUpdateWorkerTest {
             var response1 = new BotResponse.SendMessage(123L, "first");
             var response2 = new BotResponse.SendMessage(123L, "second");
 
-            var outbound = new TestQueue<BotResponse>();
+            var outbound = new TestChannel<BotResponse>();
             UpdateHandler handler = update -> Flux.just(response1, response2);
-            var worker = createWorker(new TestQueue<>(), outbound, handler);
+            var worker = createWorker(new TestChannel<>(), outbound, handler);
 
             StepVerifier.create(worker.processUpdate(SAMPLE_UPDATE))
                         .expectNext(response1)
@@ -103,9 +101,9 @@ class TelegramUpdateWorkerTest {
 
         @Test
         void handlerReturnsEmpty() {
-            var outbound = new TestQueue<BotResponse>();
+            var outbound = new TestChannel<BotResponse>();
             UpdateHandler handler = update -> Flux.empty();
-            var worker = createWorker(new TestQueue<>(), outbound, handler);
+            var worker = createWorker(new TestChannel<>(), outbound, handler);
 
             StepVerifier.create(worker.processUpdate(SAMPLE_UPDATE))
                         .verifyComplete();
@@ -115,9 +113,9 @@ class TelegramUpdateWorkerTest {
 
         @Test
         void handlerError_isSwallowed() {
-            var outbound = new TestQueue<BotResponse>();
+            var outbound = new TestChannel<BotResponse>();
             UpdateHandler handler = update -> Flux.error(new RuntimeException("handler error"));
-            var worker = createWorker(new TestQueue<>(), outbound, handler);
+            var worker = createWorker(new TestChannel<>(), outbound, handler);
 
             StepVerifier.create(worker.processUpdate(SAMPLE_UPDATE))
                         .verifyComplete();
@@ -127,25 +125,20 @@ class TelegramUpdateWorkerTest {
 
         @Test
         void publishError_isSwallowed() {
-            ReactiveQueue<BotResponse> failingOutbound = new ReactiveQueue<>() {
+            WritableReactiveChannel<BotResponse> failingOutbound = new WritableReactiveChannel<BotResponse>() {
                 @Override
                 public Mono<Void> publish(BotResponse m) {
                     return Mono.error(new RuntimeException("queue error"));
                 }
 
-                @Override
-                public Flux<BotResponse> subscribe() {
-                    return Flux.never();
-                }
 
                 @Override
-                public Mono<Void> close() {
-                    return Mono.empty();
+                public void close() {
                 }
             };
 
             UpdateHandler handler = update -> Flux.just(SAMPLE_RESPONSE);
-            var worker = createWorker(new TestQueue<>(), failingOutbound, handler);
+            var worker = createWorker(new TestChannel<>(), failingOutbound, handler);
 
             StepVerifier.create(worker.processUpdate(SAMPLE_UPDATE))
                         .verifyComplete();
@@ -157,9 +150,9 @@ class TelegramUpdateWorkerTest {
 
         @Test
         void start_andDispose() {
-            var inbound = new TestQueue<Update>();
+            var inbound = new TestChannel<Update>();
             UpdateHandler handler = update -> Flux.empty();
-            var worker = createWorker(inbound, new TestQueue<>(), handler);
+            var worker = createWorker(inbound, new TestChannel<>(), handler);
 
             worker.start();
             assertFalse(worker.isDisposed());
@@ -170,8 +163,8 @@ class TelegramUpdateWorkerTest {
 
         @Test
         void start_processesUpdatesFromQueue() throws InterruptedException {
-            var inbound = new TestQueue<Update>();
-            var outbound = new TestQueue<BotResponse>();
+            var inbound = new TestChannel<Update>();
+            var outbound = new TestChannel<BotResponse>();
             UpdateHandler handler = update -> Flux.just(SAMPLE_RESPONSE);
 
             // Use a real scheduler so the subscription runs on another thread

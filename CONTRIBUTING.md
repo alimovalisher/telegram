@@ -30,10 +30,10 @@ Thank you for your interest in contributing! This guide explains how to get invo
 
 ```
 telegram-bot-client/        # Reactive HTTP client for Telegram Bot API
-telegram-bot-core/          # Shared interfaces (ReactiveQueue, UpdateHandler, BotResponse)
+telegram-bot-core/          # Shared interfaces (ReactiveChannel, ReadableReactiveChannel, WritableReactiveChannel, UpdateHandler, BotResponse)
 telegram-bot-poller/        # Update polling and response dispatch
 telegram-bot-worker/        # Update processing pipeline
-telegram-bot-queue-pulsar/  # Apache Pulsar queue implementation
+telegram-bot-queue-pulsar/  # Apache Pulsar channel implementation (ReadableReactiveChannel, WritableReactiveChannel)
 ```
 
 ## Code Guidelines
@@ -79,7 +79,7 @@ The `telegram-bot-queue-pulsar` module uses **Testcontainers** to run Apache Pul
 ### Test Conventions
 
 - Place unit tests alongside the module they test.
-- Name integration tests with the `IT` suffix (e.g., `PulsarReactiveQueueIT`).
+- Name integration tests with the `IT` suffix (e.g., `PulsarReadableReactiveChannelIT`).
 - Use `StepVerifier` for all reactive stream assertions.
 - Mock interfaces with Mockito; use MockServer for HTTP client tests.
 

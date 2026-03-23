@@ -37,15 +37,6 @@ public class Response<T> {
         return this;
     }
 
-//    public ResponseParameters getResponseParameters() {
-//        return responseParameters;
-//    }
-//
-//    public Response<T> setResponseParameters(ResponseParameters responseParameters) {
-//        this.responseParameters = responseParameters;
-//        return this;
-//    }
-
     public T getResult() {
         return result;
     }
