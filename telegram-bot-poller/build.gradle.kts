@@ -1,6 +1,7 @@
 dependencies {
     implementation(project(":telegram-bot-core"))
 
+
     implementation(libs.slf4j)
 
     testImplementation(libs.junitJupiterApi)

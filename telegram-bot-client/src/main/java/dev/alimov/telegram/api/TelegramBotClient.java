@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.BodyInserters;
+import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -41,8 +42,39 @@ public class TelegramBotClient {
         this.webClient = webClient;
     }
 
+    /**
+     * Extracts and processes the response from a {@link ClientResponse}, converting it into a {@link Mono} of {@link Response}.
+     * Handles successful (2xx), client error (4xx), and other error responses appropriately.
+     *
+     * @param clientResponse the {@link ClientResponse} object representing the response from the client
+     * @param <T>            the type of the expected response body
+     * @return a {@link Mono} containing the extracted and processed {@link Response} object
+     *         or an error signal for client/server errors
+     */
+    private static <T> Mono<Response<T>> extractResponse(ClientResponse clientResponse, ParameterizedTypeReference<Response<T>> typeReference) {
+        return clientResponse.bodyToMono(typeReference)
+                             .flatMap(response -> {
+                                 if (response.isOk()) {
+                                     return Mono.just(response);
+                                 } else {
+                                     return Mono.error(new TelegramApiException(response.getErrorCode(), response.getDescription()));
+                                 }
+                             });
+    }
 
-    public Flux<Update> getUpdates(Integer offset, int limit, int timeout, List<String> allowedUpdates) {
+    /**
+     * Retrieves updates from the Telegram Bot API based on the provided parameters.
+     *
+     * @param offset the offset value used to identify the first update to be returned. Updates with an ID less than
+     *               this value will be ignored.
+     * @param limit the maximum number of updates to retrieve. Acceptable values range from 1 to 100.
+     * @param timeout the timeout in seconds for long polling. A higher timeout will keep the connection open until
+     *                an update is received or the timeout expires.
+     * @param allowedUpdates a list of update types that should be received. If null or empty, all update types will
+     *                       be returned.
+     * @return a Flux containing the updates retrieved from the Telegram Bot API.
+     */
+    public Flux<Update> getUpdates(long offset, int limit, int timeout, List<String> allowedUpdates) {
         log.info("getUpdates offset={} limit={} timeout={} allowedUpdates={}", offset, limit, timeout, allowedUpdates);
 
         return webClient.get()
@@ -55,21 +87,13 @@ public class TelegramBotClient {
                                     .queryParam("allowed_updates", allowedUpdates)
                                     .build();
                         })
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<List<Update>>>() {
-                        })
-                        .flatMapMany(response -> {
-                            if (response.isOk()) {
-                                return Flux.fromIterable(response.getResult());
-                            } else {
-                                return Mono.error(new RuntimeException(response.getDescription()));
-                            }
-                        })
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<List<Update>>>() {
+                        }))
+                        .flatMapMany(response -> Flux.fromIterable(response.getResult()))
                         .doOnComplete(() -> {
                             log.info("getUpdates complete {}", offset);
                         });
     }
-
 
     public Mono<Response<Message>> sendMessage(Long chatId, String text, @Nullable ParseMode parseMode, @Nullable ReplyKeyboardMarkup replyKeyboardMarkups) {
 
@@ -94,9 +118,8 @@ public class TelegramBotClient {
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter
                         )
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     public Mono<Response<Message>> setInvoice(long chatId, String title, String description, String payload, int price, String currency) {
@@ -116,11 +139,9 @@ public class TelegramBotClient {
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter
                         )
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
-
 
     public Mono<Response<Boolean>> answerPreCheckoutQuery(String preCheckoutQueryId, boolean ok, String errorMessage) {
         BodyInserters.FormInserter<String> inserter = BodyInserters.fromFormData("pre_checkout_query_id", String.valueOf(preCheckoutQueryId))
@@ -136,9 +157,8 @@ public class TelegramBotClient {
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter
                         )
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Boolean>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Boolean>>() {
+                        }));
     }
 
     /**
@@ -213,9 +233,8 @@ public class TelegramBotClient {
                         })
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -267,9 +286,8 @@ public class TelegramBotClient {
                         })
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<List<Message>>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<List<Message>>>() {
+                        }));
     }
 
     /**
@@ -301,9 +319,8 @@ public class TelegramBotClient {
                         })
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Boolean>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Boolean>>() {
+                        }));
     }
 
     /**
@@ -342,9 +359,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendMessage").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -383,9 +399,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendDocument").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -444,9 +459,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendVideo").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -497,9 +511,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendAudio").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -542,9 +555,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendVoice").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -579,9 +591,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendSticker").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -626,9 +637,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendLocation").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -669,9 +679,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendContact").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -700,9 +709,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("forwardMessage").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -743,9 +751,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("copyMessage").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<MessageId>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<MessageId>>() {
+                        }));
     }
 
     /**
@@ -778,9 +785,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("editMessageText").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -815,9 +821,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("editMessageCaption").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -840,9 +845,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("editMessageReplyMarkup").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Message>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Message>>() {
+                        }));
     }
 
     /**
@@ -858,9 +862,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("deleteMessage").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Boolean>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Boolean>>() {
+                        }));
     }
 
     /**
@@ -897,17 +900,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("sendMessageDraft").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .exchangeToMono(clientResponse -> {
-                            if (clientResponse.statusCode().is2xxSuccessful()) {
-                                return clientResponse.bodyToMono(new ParameterizedTypeReference<Response<Boolean>>() {
-                                });
-                            } else {
-                                log.error("Failed to send message draft: {}", clientResponse.statusCode());
-
-                                return clientResponse.bodyToMono(String.class)
-                                                     .flatMap(error -> Mono.error(new RuntimeException("Failed to send message draft. error: '%s'".formatted(error))));
-                            }
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Boolean>>() {
+                        }));
 
     }
 
@@ -941,9 +935,8 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> uriBuilder.pathSegment("answerCallbackQuery").build())
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(inserter)
-                        .retrieve()
-                        .bodyToMono(new ParameterizedTypeReference<Response<Boolean>>() {
-                        });
+                        .exchangeToMono(clientResponse -> extractResponse(clientResponse, new ParameterizedTypeReference<Response<Boolean>>() {
+                        }));
     }
 
     private <T> String toJson(T object) {

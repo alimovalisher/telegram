@@ -16,7 +16,7 @@ import java.util.List;
  * Sealed interface representing all possible outbound responses a bot can send via the Telegram Bot API.
  * Each variant maps to a specific Telegram API method.
  * <p>
- * Uses Jackson polymorphic serialization so responses can be transported through a {@link ReactiveQueue}.
+ * Uses Jackson polymorphic serialization so responses can be transported through a {@link ReactiveChannel}.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "@type")
 @JsonSubTypes({

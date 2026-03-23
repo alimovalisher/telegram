@@ -1,9 +1,7 @@
 package dev.alimov.telegram.worker;
 
 import dev.alimov.telegram.api.Update;
-import dev.alimov.telegram.core.BotResponse;
-import dev.alimov.telegram.core.ReactiveQueue;
-import dev.alimov.telegram.core.UpdateHandler;
+import dev.alimov.telegram.core.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
@@ -12,7 +10,7 @@ import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 
 /**
- * Subscribes to the inbound {@link ReactiveQueue} of Telegram updates, processes each
+ * Subscribes to the inbound {@link ReactiveChannel} of Telegram updates, processes each
  * update through an {@link UpdateHandler}, and publishes resulting {@link BotResponse}
  * messages to the outbound queue.
  */
@@ -20,8 +18,8 @@ public class TelegramUpdateWorker implements Disposable {
 
     private static final Logger log = LoggerFactory.getLogger(TelegramUpdateWorker.class);
 
-    private final ReactiveQueue<Update> inboundQueue;
-    private final ReactiveQueue<BotResponse> outboundQueue;
+    private final ReadableReactiveChannel<Update> inboundQueue;
+    private final WritableReactiveChannel<BotResponse> outboundQueue;
     private final UpdateHandler updateHandler;
     private final Scheduler scheduler;
     private final int concurrency;
@@ -29,16 +27,16 @@ public class TelegramUpdateWorker implements Disposable {
     private volatile Disposable disposable;
 
     public TelegramUpdateWorker(
-            ReactiveQueue<Update> inboundQueue,
-            ReactiveQueue<BotResponse> outboundQueue,
+            ReadableReactiveChannel<Update> inboundQueue,
+            WritableReactiveChannel<BotResponse> outboundQueue,
             UpdateHandler updateHandler
     ) {
         this(inboundQueue, outboundQueue, updateHandler, Schedulers.boundedElastic(), 256);
     }
 
     public TelegramUpdateWorker(
-            ReactiveQueue<Update> inboundQueue,
-            ReactiveQueue<BotResponse> outboundQueue,
+            ReadableReactiveChannel<Update> inboundQueue,
+            WritableReactiveChannel<BotResponse> outboundQueue,
             UpdateHandler updateHandler,
             Scheduler scheduler,
             int concurrency
