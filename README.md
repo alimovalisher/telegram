@@ -9,8 +9,7 @@ A reactive, modular Java framework for building Telegram bots. Built on Spring W
 | `telegram-bot-client`       | Reactive HTTP client for the Telegram Bot API                      |
 | `telegram-bot-core`         | Shared interfaces: `ReactiveChannel`, `ReadableReactiveChannel`, `WritableReactiveChannel`, `UpdateHandler`, `BotResponse` |
 | `telegram-bot-poller`       | Polls updates from Telegram (`TelegramBotUpdatePoller`) and dispatches outbound responses (`TelegramBotReplier`) |
-| `telegram-bot-worker`       | Processes updates through a handler and publishes responses        |
-| `telegram-bot-queue-pulsar` | Apache Pulsar implementation of `ReadableReactiveChannel` and `WritableReactiveChannel` |
+| `telegram-bot-queue-pulsar` | Apache Pulsar implementation of `ReadableReactiveChannel` and `WritableReactiveChannel` using Pulsar Reactive API |
 
 ## Architecture
 
@@ -20,22 +19,15 @@ graph LR
 
     Poller[TelegramBotUpdatePoller]
     Replier[TelegramBotReplier]
-    Worker[TelegramUpdateWorker]
-
-    InW[WritableReactiveChannel\nUpdate]
-    InR[ReadableReactiveChannel\nUpdate]
-    OutW[WritableReactiveChannel\nBotResponse]
-    OutR[ReadableReactiveChannel\nBotResponse]
+    App[Your Application]
 
     TG -- polls updates --> Poller
-    Poller -- publish --> InW
-    InR -- subscribe --> Worker
-    Worker -- publish --> OutW
-    OutR -- subscribe --> Replier
+    Poller -- Flux of Update --> App
+    App -- BotResponse --> Replier
     Replier -- sends responses --> TG
 ```
 
-The poller, replier, and worker communicate through `ReadableReactiveChannel` and `WritableReactiveChannel` — swap in any implementation (Pulsar, Kafka, in-memory). Channels are split into readable and writable interfaces following the principle of interface segregation.
+The `TelegramBotUpdatePoller` returns a reactive `Flux<Update>` stream. Your application processes updates and dispatches responses through `TelegramBotReplier`. For distributed architectures, use `ReadableReactiveChannel` and `WritableReactiveChannel` to decouple components via message queues (e.g., Pulsar). Channels are split into readable and writable interfaces following the principle of interface segregation.
 
 ## Requirements
 
@@ -50,15 +42,14 @@ The poller, replier, and worker communicate through `ReadableReactiveChannel` an
 ```kotlin
 dependencies {
     // Core client only
-    implementation("dev.alimov.telegram-bot:telegram-bot-client:1.3.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-client:1.4.0-SNAPSHOT")
 
     // Full framework
-    implementation("dev.alimov.telegram-bot:telegram-bot-core:1.3.0-SNAPSHOT")
-    implementation("dev.alimov.telegram-bot:telegram-bot-poller:1.3.0-SNAPSHOT")
-    implementation("dev.alimov.telegram-bot:telegram-bot-worker:1.3.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-core:1.4.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-poller:1.4.0-SNAPSHOT")
 
     // Pulsar queue (optional)
-    implementation("dev.alimov.telegram-bot:telegram-bot-queue-pulsar:1.3.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-queue-pulsar:1.4.0-SNAPSHOT")
 }
 ```
 
@@ -69,7 +60,7 @@ dependencies {
 <dependency>
     <groupId>dev.alimov.telegram-bot</groupId>
     <artifactId>telegram-bot-core</artifactId>
-    <version>1.3.0-SNAPSHOT</version>
+    <version>1.4.0-SNAPSHOT</version>
 </dependency>
 ```
 
@@ -83,64 +74,37 @@ class Example {
         TelegramBotClient client = new TelegramBotClient("YOUR_BOT_TOKEN");
 
         // Send a message
-        client.sendMessage(chatId, "Hello!",ParseMode.HTML, null)
-                      .subscribe(r ->System.out.println("Sent: "+r.getResult().messageId()));
-    
+        client.sendMessage(chatId, "Hello!", ParseMode.HTML, null)
+              .subscribe(r -> System.out.println("Sent: " + r.getResult().messageId()));
+
         // Poll for updates
-        client.getUpdates(0,100,30,List.of("message"))
-                        .subscribe(update ->System.out.println("Received: "+update.message().text()));        
+        client.getUpdates(0, 100, 30, List.of("message"))
+              .subscribe(update -> System.out.println("Received: " + update.message().text()));
     }
 }
 ```
 
-### Full framework with Pulsar queues
+### Full framework usage
 
 ```java
 public class Example {
-    public void queue() throws Exception {
-        // Create Pulsar client, producer, and consumers
-        PulsarClient pulsarClient = PulsarClient.builder().serviceUrl("pulsar://localhost:6650").build();
-        ObjectMapper mapper = new ObjectMapper();
-
-        Producer<byte[]> updateProducer = pulsarClient.newProducer().topic("bot-updates").create();
-        Consumer<byte[]> updateConsumer = pulsarClient.newConsumer().topic("bot-updates")
-                .subscriptionName("worker-sub").subscribe();
-        Producer<byte[]> responseProducer = pulsarClient.newProducer().topic("bot-responses").create();
-        Consumer<byte[]> responseConsumer = pulsarClient.newConsumer().topic("bot-responses")
-                .subscriptionName("poller-sub").subscribe();
-
-        // Create channels (split into readable and writable)
-        WritableReactiveChannel<Update> inboundWriter =
-                new PulsarWritableReactiveChannel<>(mapper, updateProducer);
-        ReadableReactiveChannel<Update> inboundReader =
-                new PulsarReadableReactiveChannel<>(mapper, updateConsumer, Update.class);
-        WritableReactiveChannel<BotResponse> outboundWriter =
-                new PulsarWritableReactiveChannel<>(mapper, responseProducer);
-        ReadableReactiveChannel<BotResponse> outboundReader =
-                new PulsarReadableReactiveChannel<>(mapper, responseConsumer, BotResponse.class);
-
-        // Create poller (writes updates to inbound channel)
+    public void run() {
         TelegramBotClient client = new TelegramBotClient("YOUR_BOT_TOKEN");
-        Scheduler scheduler = Schedulers.boundedElastic();
+
+        // Create poller and replier
         TelegramBotUpdatePoller poller = new TelegramBotUpdatePoller(
-                client, inboundWriter,
-                Duration.ofSeconds(1), 100, 30, List.of("message", "callback_query"), scheduler);
-        poller.start();
+                client, 100, 30, List.of("message", "callback_query"));
+        TelegramBotReplier replier = new TelegramBotReplier(client);
 
-        // Create replier (reads responses from outbound channel and sends them)
-        TelegramBotReplier replier = new TelegramBotReplier(
-                client, outboundReader, Duration.ofSeconds(1), scheduler);
-        replier.start();
-
-        // Create worker with your handler (reads updates, writes responses)
-        UpdateHandler handler = update -> {
-            String text = update.message().text();
-            long chatId = update.message().chat().id();
-            return Flux.just(new BotResponse.SendMessage(chatId, "Echo: " + text));
-        };
-
-        TelegramUpdateWorker worker = new TelegramUpdateWorker(inboundReader, outboundWriter, handler);
-        worker.start();
+        // Subscribe to updates, process them, and dispatch responses
+        poller.subscribe()
+              .flatMap(update -> {
+                  String text = update.message().text();
+                  long chatId = update.message().chat().id();
+                  BotResponse response = new BotResponse.SendMessage(chatId, "Echo: " + text);
+                  return replier.dispatch(response);
+              })
+              .subscribe();
     }
 }
 ```
@@ -168,29 +132,19 @@ Each type has convenience constructors for common usage:
 new BotResponse.SendMessage(chatId, "Hello!")
 
 // Text with formatting
-new BotResponse.
-
-SendMessage(chatId, "<b>bold</b>",ParseMode.HTML)
+new BotResponse.SendMessage(chatId, "<b>bold</b>", ParseMode.HTML)
 
 // Photo with caption
-new BotResponse.
-
-SendPhoto(chatId, "photo_file_id","Nice shot!",ParseMode.HTML)
+new BotResponse.SendPhoto(chatId, "photo_file_id", "Nice shot!", ParseMode.HTML)
 
 // Edit existing message
-new BotResponse.
-
-EditMessageText(chatId, messageId, "Updated text")
+new BotResponse.EditMessageText(chatId, messageId, "Updated text")
 
 // Delete message
-new BotResponse.
-
-DeleteMessage(chatId, messageId)
+new BotResponse.DeleteMessage(chatId, messageId)
 
 // Answer callback query
-new BotResponse.
-
-AnswerCallbackQuery(callbackQueryId, "Done!",true)
+new BotResponse.AnswerCallbackQuery(callbackQueryId, "Done!", true)
 ```
 
 ## Running Tests

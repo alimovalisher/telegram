@@ -2,7 +2,6 @@ package dev.alimov.telegram.poller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.alimov.telegram.api.*;
-import dev.alimov.telegram.core.ReactiveChannel;
 import dev.alimov.telegram.core.ReadableReactiveChannel;
 import dev.alimov.telegram.core.WritableReactiveChannel;
 import org.apache.commons.lang3.StringUtils;
@@ -15,7 +14,11 @@ import org.mockserver.integration.ClientAndServer;
 import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
 import org.mockserver.model.MediaType;
+import org.springframework.boot.http.client.reactive.ClientHttpConnectorBuilder;
+import org.springframework.boot.http.client.reactive.ReactorClientHttpConnectorBuilder;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.client.reactive.ClientHttpConnector;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -47,7 +50,7 @@ class TelegramBotUpdatePollerTest {
     private TelegramBotClient botClient;
 
     @BeforeAll
-    static void startServer() {
+    static void subscribeServer() {
         mockServer = startClientAndServer(0);
     }
 
@@ -73,42 +76,17 @@ class TelegramBotUpdatePollerTest {
     void setUp() {
         mockServer.reset();
         String mockBaseUrl = "http://localhost:" + mockServer.getPort();
-        botClient = new TelegramBotClient(mockBaseUrl, TOKEN, objectMapper, WebClient.builder().build());
+        botClient = new TelegramBotClient(mockBaseUrl, TOKEN, objectMapper, WebClient.builder()
+                                                                                     .clientConnector(ClientHttpConnectorBuilder.reactor()
+                                                                                                                                .withHttpClientCustomizer(httpClient -> httpClient.wiretap(true))
+                                                                                                                                .build())
+                                                                                     .build());
     }
 
-    private TelegramBotUpdatePoller createPoller(WritableReactiveChannel<Update> inbound) {
-        return new TelegramBotUpdatePoller(botClient, inbound, Duration.ofMillis(100), 100, 0, List.of(), Schedulers.immediate());
+    private TelegramBotUpdatePoller createPoller() {
+        return new TelegramBotUpdatePoller(botClient, 100, 0, List.of());
     }
 
-    /**
-     * Simple in-memory queue — no Mockito needed
-     */
-    static class TestChannel<T> implements WritableReactiveChannel<T>, ReadableReactiveChannel<T> {
-        private final List<T> published = new CopyOnWriteArrayList<>();
-        private final reactor.core.publisher.Sinks.Many<T> sink =
-                reactor.core.publisher.Sinks.many().multicast().onBackpressureBuffer();
-
-        @Override
-        public Mono<Void> publish(T message) {
-            published.add(message);
-            sink.tryEmitNext(message);
-            return Mono.empty();
-        }
-
-        @Override
-        public Flux<T> subscribe() {
-            return sink.asFlux();
-        }
-
-        @Override
-        public void close() {
-
-        }
-
-        public List<T> getPublished() {
-            return published;
-        }
-    }
 
     // ── tests ────────────────────────────────────────────────────────────
 
@@ -124,15 +102,12 @@ class TelegramBotUpdatePollerTest {
                                           {"ok":true,"result":[{"update_id":100,"message":{"message_id":1,"date":1000,"chat":{"id":123,"type":"private"},"text":"hello"}}]}
                                           """));
 
-            TestChannel<Update> inbound = new TestChannel<>();
-            TelegramBotUpdatePoller poller = createPoller(inbound);
+            TelegramBotUpdatePoller poller = createPoller();
 
-            StepVerifier.create(poller.pollUpdates(0))
+            StepVerifier.create(poller.subscribe())
                         .assertNext(u -> assertEquals(100L, u.updateId()))
                         .verifyComplete();
 
-            assertEquals(1, inbound.getPublished().size());
-            assertEquals("hello", inbound.getPublished().get(0).message().text());
         }
 
         @Test
@@ -142,11 +117,10 @@ class TelegramBotUpdatePollerTest {
                       )
                       .respond(ok("{\"ok\":true,\"result\":[]}"));
 
-            TestChannel<Update> inbound = new TestChannel<>();
-            TelegramBotUpdatePoller poller = createPoller(inbound);
+            TelegramBotUpdatePoller poller = createPoller();
 
-            StepVerifier.create(poller.pollUpdates(0)).verifyComplete();
-            assertTrue(inbound.getPublished().isEmpty());
+            StepVerifier.create(poller.subscribe())
+                        .verifyComplete();
         }
 
         @Test
@@ -156,10 +130,9 @@ class TelegramBotUpdatePollerTest {
                       )
                       .respond(TelegramBotUpdatePollerTest.httpResponse(HttpStatus.CONFLICT, "{\"ok\":false,\"error_code\":409,\"description\":\"Conflict\"}"));
 
-            TestChannel<Update> inbound = new TestChannel<>();
-            TelegramBotUpdatePoller poller = createPoller(inbound);
+            TelegramBotUpdatePoller poller = createPoller();
 
-            StepVerifier.create(poller.pollUpdates(0))
+            StepVerifier.create(poller.subscribe())
                         .verifyErrorMatches(e -> {
                             if (e instanceof TelegramApiException telegramApiException) {
                                 return StringUtils.equals("Conflict", telegramApiException.getMessage());
@@ -168,7 +141,6 @@ class TelegramBotUpdatePollerTest {
                             return false;
                         });
 
-            assertTrue(inbound.getPublished().isEmpty());
         }
     }
 

@@ -24,39 +24,12 @@ public class TelegramBotReplier implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(TelegramBotReplier.class);
 
     private final TelegramBotClient botClient;
-    private final ReadableReactiveChannel<BotResponse> outboundQueue;
-    private final Duration retryInterval;
-    private final Scheduler scheduler;
 
 
     private final Disposable.Composite disposables = Disposables.composite();
 
-    public TelegramBotReplier(
-            TelegramBotClient botClient,
-            ReadableReactiveChannel<BotResponse> outboundQueue,
-            Duration retryInterval,
-            Scheduler scheduler
-    ) {
+    public TelegramBotReplier(TelegramBotClient botClient) {
         this.botClient = botClient;
-        this.outboundQueue = outboundQueue;
-        this.retryInterval = retryInterval;
-        this.scheduler = scheduler;
-    }
-
-    /**
-     * Start polling for updates and forwarding outbound responses.
-     * This method subscribes to both the polling schedule and the outbound queue.
-     */
-    public void start() {
-        Disposable outbound = outboundQueue.subscribe()
-                                           .flatMap(this::dispatch)
-                                           .doOnError(e -> log.error("Error sending outbound response", e))
-                                           .retry()
-                                           .subscribeOn(scheduler)
-                                           .subscribe();
-        disposables.add(outbound);
-
-        log.info("TelegramUpdatePoller started with interval={}", retryInterval);
     }
 
 
