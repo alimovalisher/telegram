@@ -32,8 +32,7 @@ Thank you for your interest in contributing! This guide explains how to get invo
 telegram-bot-client/        # Reactive HTTP client for Telegram Bot API
 telegram-bot-core/          # Shared interfaces (ReactiveChannel, ReadableReactiveChannel, WritableReactiveChannel, UpdateHandler, BotResponse)
 telegram-bot-poller/        # Update polling and response dispatch
-telegram-bot-worker/        # Update processing pipeline
-telegram-bot-queue-pulsar/  # Apache Pulsar channel implementation (ReadableReactiveChannel, WritableReactiveChannel)
+telegram-bot-queue-pulsar/  # Apache Pulsar channel implementation using Pulsar Reactive API
 ```
 
 ## Code Guidelines

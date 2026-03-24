@@ -2,10 +2,10 @@ package dev.alimov.telegram.queue.pulsar;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.pulsar.client.api.PulsarClient;
-import org.apache.pulsar.client.api.PulsarClientException;
-import org.apache.pulsar.client.api.SubscriptionMode;
-import org.apache.pulsar.client.api.SubscriptionType;
+import org.apache.pulsar.client.api.*;
+import org.apache.pulsar.common.schema.KeyValue;
+import org.apache.pulsar.reactive.client.adapter.AdaptedReactivePulsarClientFactory;
+import org.apache.pulsar.reactive.client.api.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessMode;
 import java.time.Duration;
 import java.util.UUID;
@@ -25,13 +26,9 @@ class PulsarReadableReactiveChannelIT {
 
     private static final Logger log = LoggerFactory.getLogger(PulsarReadableReactiveChannelIT.class);
     private PulsarClient pulsarClient;
-    private ObjectMapper objectMapper;
-    private PulsarReadableReactiveChannel<TestMessage> pulsarReadableReactiveChannel;
-    private PulsarWritableReactiveChannel<TestMessage> pulsarWritableReactiveChannel;
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    record TestMessage(String text, int value) {
-    }
+    private PulsarReadableReactiveChannel<String> pulsarReadableReactiveChannel;
+    private PulsarWritableReactiveChannel<String> pulsarWritableReactiveChannel;
+    private ReactivePulsarClient reactivePulsarClient;
 
     private String topic;
 
@@ -41,28 +38,24 @@ class PulsarReadableReactiveChannelIT {
         pulsarClient = PulsarClient.builder()
                                    .serviceUrl("pulsar://localhost:6650")
                                    .build();
-        objectMapper = new ObjectMapper();
 
-        pulsarReadableReactiveChannel = new PulsarReadableReactiveChannel<>(
-                objectMapper,
-                pulsarClient.newConsumer()
-                            .topic(topic)
-                            .consumerName("test-consumer")
-                            .subscriptionName("test-%s".formatted(UUID.randomUUID()))
-                            .subscriptionMode(SubscriptionMode.NonDurable)
-                            .subscriptionType(SubscriptionType.Shared)
-                            .maxAcknowledgmentGroupSize(Integer.MAX_VALUE)
-                            .subscribe(),
-                TestMessage.class
+        reactivePulsarClient = AdaptedReactivePulsarClientFactory.create(pulsarClient);
+
+        pulsarReadableReactiveChannel = new PulsarReadableReactiveChannel<String>(
+                reactivePulsarClient.messageReader(Schema.STRING)
+                                    .topic(topic)
+                                    .endOfStreamAction(EndOfStreamAction.POLL)
+                                    .startAtSpec(StartAtSpec.ofEarliest())
+                                    .readerName("test")
+                                    .subscriptionName("test-%s".formatted(UUID.randomUUID()))
+                                    .build()
         );
 
-        pulsarWritableReactiveChannel = new PulsarWritableReactiveChannel<>(
-                objectMapper,
-                pulsarClient.newProducer()
-                            .topic(topic)
-                            .enableBatching(false)
-                            .producerName("test")
-                            .create()
+        pulsarWritableReactiveChannel = new PulsarWritableReactiveChannel<String>(
+                reactivePulsarClient.messageSender(Schema.STRING)
+                                    .topic(topic)
+                                    .producerName("test")
+                                    .build()
         );
     }
 
@@ -79,19 +72,23 @@ class PulsarReadableReactiveChannelIT {
 
     @Test
     void publishAndSubscribe_singleMessage() throws PulsarClientException, InterruptedException {
-        TestMessage message = new TestMessage("hello", 42);
 
         StepVerifier.create(
-                            Mono.delay(Duration.ofSeconds(1))
-                                .flatMap(t -> pulsarWritableReactiveChannel.publish(message)))
+                            pulsarWritableReactiveChannel.publish(
+                                                                 MessageSpec.builder("hello")
+                                                                            .key("key-1")
+                                                                            .build()
+                                                         )
+                                                         .then()
+                    )
                     .verifyComplete();
 
         StepVerifier.create(pulsarReadableReactiveChannel.subscribe()
                                                          .take(1))
                     .assertNext(received -> {
                         log.info("Received message: {}", received);
-                        assertEquals("hello", received.text());
-                        assertEquals(42, received.value());
+                        assertEquals("hello", received.getValue());
+                        assertEquals("key-1", received.getKey());
                     })
                     .expectComplete()
                     .verify(Duration.ofSeconds(30));
@@ -102,31 +99,35 @@ class PulsarReadableReactiveChannelIT {
     @Test
     void publishAndSubscribe_multipleMessages() {
 
-        // Schedule publish after a delay
-        StepVerifier.create(pulsarWritableReactiveChannel.publish(new TestMessage("first", 1)))
-                    .verifyComplete();
+        for (int i = 0; i < 4; i++) {
+            StepVerifier.create(
+                                pulsarWritableReactiveChannel.publish(
+                                        MessageSpec.builder("hello-%d".formatted(i))
+                                                   .key("key-1")
+                                                   .build()
+                                )
+                        )
+                        .expectNextCount(1)
+                        .verifyComplete();
+        }
 
-        StepVerifier.create(pulsarWritableReactiveChannel.publish(new TestMessage("second", 2)))
-                    .verifyComplete();
 
-        StepVerifier.create(pulsarWritableReactiveChannel.publish(new TestMessage("third", 3)))
-                    .verifyComplete();
-
-        StepVerifier.create(pulsarWritableReactiveChannel.publish(new TestMessage("four", 3)))
-                    .verifyComplete();
-
-        StepVerifier.create(pulsarReadableReactiveChannel.subscribe().take(3))
-                    .assertNext(m -> {
-                        assertEquals("first", m.text());
-                        assertEquals(1, m.value());
+        StepVerifier.create(pulsarReadableReactiveChannel.subscribe().take(4))
+                    .assertNext(received -> {
+                        assertEquals("hello-0", received.getValue());
+                        assertEquals("key-1", received.getKey());
                     })
-                    .assertNext(m -> {
-                        assertEquals("second", m.text());
-                        assertEquals(2, m.value());
+                    .assertNext(received -> {
+                        assertEquals("hello-1", received.getValue());
+                        assertEquals("key-1", received.getKey());
                     })
-                    .assertNext(m -> {
-                        assertEquals("third", m.text());
-                        assertEquals(3, m.value());
+                    .assertNext(received -> {
+                        assertEquals("hello-2", received.getValue());
+                        assertEquals("key-1", received.getKey());
+                    })
+                    .assertNext(received -> {
+                        assertEquals("hello-3", received.getValue());
+                        assertEquals("key-1", received.getKey());
                     })
                     .expectComplete()
                     .verify(Duration.ofSeconds(30));
@@ -140,14 +141,13 @@ class PulsarReadableReactiveChannelIT {
 
         for (int i = 0; i < count; i++) {
             // Schedule publishing after consumer setup
-            int finalI = i;
             StepVerifier.create(
-                                Mono.delay(Duration.ofSeconds(1))
-                                    .flatMap(t -> {
-                                        return pulsarWritableReactiveChannel.publish(new TestMessage("msg-" + finalI, finalI));
+                                pulsarWritableReactiveChannel.publish(MessageSpec.builder("msg-%d".formatted(i))
+                                                                                 .key("key-1")
+                                                                                 .build())
 
-                                    })
                         )
+                        .expectNextCount(1)
                         .verifyComplete();
         }
 

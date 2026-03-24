@@ -7,14 +7,15 @@ import reactor.core.publisher.Mono;
  * This interface is designed to be non-blocking and integrates with the reactive programming paradigm,
  * allowing asynchronous operations through Reactor's {@link Mono}.
  *
- * @param <V> the type of messages handled by this channel
+ * @param <I> the type of messages handled by this channel
+ * @param <O> the type of messages handled result by this channel
  */
-public interface WritableReactiveChannel<V> extends ReactiveChannel<V> {
+public interface WritableReactiveChannel<I, O> extends ReactiveChannel {
     /**
      * Publish a message to the channel.
      *
      * @param message the message to publish
      * @return a {@link Mono} that completes when the message has been accepted by the channel
      */
-    Mono<Void> publish(V message);
+    Mono<O> publish(I message);
 }

@@ -9,7 +9,7 @@ import reactor.core.publisher.Flux;
  *
  * @param <V> the type of messages transported by this channel
  */
-public interface ReadableReactiveChannel<V> extends ReactiveChannel<V> {
+public interface ReadableReactiveChannel<V> extends ReactiveChannel {
     /**
      * Subscribe to messages from the channel.
      *

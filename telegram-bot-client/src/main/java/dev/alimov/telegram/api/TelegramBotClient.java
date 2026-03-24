@@ -49,7 +49,7 @@ public class TelegramBotClient {
      * @param clientResponse the {@link ClientResponse} object representing the response from the client
      * @param <T>            the type of the expected response body
      * @return a {@link Mono} containing the extracted and processed {@link Response} object
-     *         or an error signal for client/server errors
+     * or an error signal for client/server errors
      */
     private static <T> Mono<Response<T>> extractResponse(ClientResponse clientResponse, ParameterizedTypeReference<Response<T>> typeReference) {
         return clientResponse.bodyToMono(typeReference)
@@ -65,11 +65,11 @@ public class TelegramBotClient {
     /**
      * Retrieves updates from the Telegram Bot API based on the provided parameters.
      *
-     * @param offset the offset value used to identify the first update to be returned. Updates with an ID less than
-     *               this value will be ignored.
-     * @param limit the maximum number of updates to retrieve. Acceptable values range from 1 to 100.
-     * @param timeout the timeout in seconds for long polling. A higher timeout will keep the connection open until
-     *                an update is received or the timeout expires.
+     * @param offset         the offset value used to identify the first update to be returned. Updates with an ID less than
+     *                       this value will be ignored.
+     * @param limit          the maximum number of updates to retrieve. Acceptable values range from 1 to 100.
+     * @param timeout        the timeout in seconds for long polling. A higher timeout will keep the connection open until
+     *                       an update is received or the timeout expires.
      * @param allowedUpdates a list of update types that should be received. If null or empty, all update types will
      *                       be returned.
      * @return a Flux containing the updates retrieved from the Telegram Bot API.
@@ -92,6 +92,9 @@ public class TelegramBotClient {
                         .flatMapMany(response -> Flux.fromIterable(response.getResult()))
                         .doOnComplete(() -> {
                             log.info("getUpdates complete {}", offset);
+                        })
+                        .doOnError(e -> {
+                            log.warn("getUpdates error", e);
                         });
     }
 
