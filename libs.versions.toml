@@ -11,7 +11,7 @@ micrometer = "1.16.0"
 mockito = "5.10.0"
 junitJupiter = "5.12.2"
 mockserver = "5.15.0"
-pulsar = "0.7.0"
+pulsar = "4.1.3"
 
 
 [libraries]
@@ -40,7 +40,7 @@ mockitoJunitJupiter = { group = "org.mockito", name = "mockito-junit-jupiter", v
 junitPlatformLauncher = { group = "org.junit.platform", name = "junit-platform-launcher" }
 
 # Pulsar
-pulsarClient = { group = "org.apache.pulsar", name = "pulsar-client-reactive-adapter", version.ref = "pulsar" }
+pulsarClient = { group = "org.apache.pulsar", name = "pulsar-client", version.ref = "pulsar" }
 
 # MockServer
 mockserverNetty = { group = "org.mock-server", name = "mockserver-netty", version.ref = "mockserver" }

@@ -1,21 +1,13 @@
 package dev.alimov.telegram.queue.pulsar;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.pulsar.client.api.*;
-import org.apache.pulsar.common.schema.KeyValue;
-import org.apache.pulsar.reactive.client.adapter.AdaptedReactivePulsarClientFactory;
-import org.apache.pulsar.reactive.client.api.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-import java.nio.charset.StandardCharsets;
-import java.nio.file.AccessMode;
 import java.time.Duration;
 import java.util.UUID;
 
@@ -28,7 +20,6 @@ class PulsarReadableReactiveChannelIT {
     private PulsarClient pulsarClient;
     private PulsarReadableReactiveChannel<String> pulsarReadableReactiveChannel;
     private PulsarWritableReactiveChannel<String> pulsarWritableReactiveChannel;
-    private ReactivePulsarClient reactivePulsarClient;
 
     private String topic;
 
@@ -39,23 +30,15 @@ class PulsarReadableReactiveChannelIT {
                                    .serviceUrl("pulsar://localhost:6650")
                                    .build();
 
-        reactivePulsarClient = AdaptedReactivePulsarClientFactory.create(pulsarClient);
-
         pulsarReadableReactiveChannel = new PulsarReadableReactiveChannel<String>(
-                reactivePulsarClient.messageReader(Schema.STRING)
-                                    .topic(topic)
-                                    .endOfStreamAction(EndOfStreamAction.POLL)
-                                    .startAtSpec(StartAtSpec.ofEarliest())
-                                    .readerName("test")
-                                    .subscriptionName("test-%s".formatted(UUID.randomUUID()))
-                                    .build()
+                createConsumer("test-%s".formatted(UUID.randomUUID()))
         );
 
         pulsarWritableReactiveChannel = new PulsarWritableReactiveChannel<String>(
-                reactivePulsarClient.messageSender(Schema.STRING)
-                                    .topic(topic)
-                                    .producerName("test")
-                                    .build()
+                pulsarClient.newProducer(Schema.STRING)
+                            .topic(topic)
+                            .producerName("test")
+                            .create()
         );
     }
 
@@ -75,9 +58,7 @@ class PulsarReadableReactiveChannelIT {
 
         StepVerifier.create(
                             pulsarWritableReactiveChannel.publish(
-                                                                 MessageSpec.builder("hello")
-                                                                            .key("key-1")
-                                                                            .build()
+                                                                 "hello"
                                                          )
                                                          .then()
                     )
@@ -88,7 +69,6 @@ class PulsarReadableReactiveChannelIT {
                     .assertNext(received -> {
                         log.info("Received message: {}", received);
                         assertEquals("hello", received.getValue());
-                        assertEquals("key-1", received.getKey());
                     })
                     .expectComplete()
                     .verify(Duration.ofSeconds(30));
@@ -101,50 +81,38 @@ class PulsarReadableReactiveChannelIT {
 
         for (int i = 0; i < 4; i++) {
             StepVerifier.create(
-                                pulsarWritableReactiveChannel.publish(
-                                        MessageSpec.builder("hello-%d".formatted(i))
-                                                   .key("key-1")
-                                                   .build()
-                                )
+                                pulsarWritableReactiveChannel.publish("hello-%d".formatted(i))
                         )
                         .expectNextCount(1)
                         .verifyComplete();
         }
 
 
-        StepVerifier.create(pulsarReadableReactiveChannel.subscribe().take(4))
-                    .assertNext(received -> {
-                        assertEquals("hello-0", received.getValue());
-                        assertEquals("key-1", received.getKey());
-                    })
-                    .assertNext(received -> {
-                        assertEquals("hello-1", received.getValue());
-                        assertEquals("key-1", received.getKey());
-                    })
-                    .assertNext(received -> {
-                        assertEquals("hello-2", received.getValue());
-                        assertEquals("key-1", received.getKey());
-                    })
-                    .assertNext(received -> {
-                        assertEquals("hello-3", received.getValue());
-                        assertEquals("key-1", received.getKey());
-                    })
+        StepVerifier.create(pulsarReadableReactiveChannel.subscribe()
+                                                         .flatMap(msg -> {
+                                                             return pulsarReadableReactiveChannel.acknowledge(msg)
+                                                                                                 .thenReturn(msg.getValue());
+                                                         })
+                                                         .take(4)
+                    )
+                    .expectNext("hello-0")
+                    .expectNext("hello-1")
+                    .expectNext("hello-2")
+                    .expectNext("hello-3")
                     .expectComplete()
-                    .verify(Duration.ofSeconds(30));
+                    .verify(Duration.ofSeconds(10));
 
     }
 
     @Test
-    void publish_multipleTimes_allDelivered() {
+    void endOfStream() {
 
         int count = 10;
 
         for (int i = 0; i < count; i++) {
             // Schedule publishing after consumer setup
             StepVerifier.create(
-                                pulsarWritableReactiveChannel.publish(MessageSpec.builder("msg-%d".formatted(i))
-                                                                                 .key("key-1")
-                                                                                 .build())
+                                pulsarWritableReactiveChannel.publish("msg-%d".formatted(i))
 
                         )
                         .expectNextCount(1)
@@ -153,9 +121,25 @@ class PulsarReadableReactiveChannelIT {
 
 
         StepVerifier.create(pulsarReadableReactiveChannel.subscribe()
-                                                         .take(count))
-                    .expectNextCount(count)
+                                                         .flatMap(msg -> {
+                                                             return pulsarReadableReactiveChannel.acknowledge(msg)
+                                                                                                 .thenReturn(msg.getValue());
+                                                         }))
+                    .expectNextCount(10)
                     .expectComplete()
                     .verify(Duration.ofSeconds(30));
+    }
+
+
+    private Consumer<String> createConsumer(String subscriptionName) throws PulsarClientException {
+        return pulsarClient.newConsumer(Schema.STRING)
+                           .topic(topic)
+                           .subscriptionName(subscriptionName)
+                           .consumerName("test")
+                           .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
+                           .subscriptionMode(SubscriptionMode.Durable)
+                           .subscriptionType(SubscriptionType.Shared)
+                           .receiverQueueSize(1)
+                           .subscribe();
     }
 }
