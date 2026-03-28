@@ -30,9 +30,9 @@ Thank you for your interest in contributing! This guide explains how to get invo
 
 ```
 telegram-bot-client/        # Reactive HTTP client for Telegram Bot API
-telegram-bot-core/          # Shared interfaces (ReactiveChannel, ReadableReactiveChannel, WritableReactiveChannel, UpdateHandler, BotResponse)
+telegram-bot-core/          # Shared interfaces (ReactiveChannel, ReadableReactiveChannel, WritableReactiveChannel, BotResponse)
 telegram-bot-poller/        # Update polling and response dispatch
-telegram-bot-queue-pulsar/  # Apache Pulsar channel implementation using Pulsar Reactive API
+telegram-bot-queue-pulsar/  # Apache Pulsar channel implementation using Pulsar Consumer/Producer APIs
 ```
 
 ## Code Guidelines
@@ -58,9 +58,9 @@ All changes must include appropriate tests.
 
 ### Integration Tests
 
-The `telegram-bot-queue-pulsar` module uses **Testcontainers** to run Apache Pulsar in Docker during tests.
+The `telegram-bot-queue-pulsar` module requires a running Apache Pulsar instance for integration tests.
 
-- Start Pulsar manually for development:
+- Start Pulsar for development:
   ```bash
   docker compose up -d
   ```

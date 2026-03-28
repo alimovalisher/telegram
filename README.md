@@ -7,9 +7,9 @@ A reactive, modular Java framework for building Telegram bots. Built on Spring W
 | Module                      | Description                                                        |
 |-----------------------------|--------------------------------------------------------------------|
 | `telegram-bot-client`       | Reactive HTTP client for the Telegram Bot API                      |
-| `telegram-bot-core`         | Shared interfaces: `ReactiveChannel`, `ReadableReactiveChannel`, `WritableReactiveChannel`, `UpdateHandler`, `BotResponse` |
+| `telegram-bot-core`         | Shared interfaces: `ReactiveChannel`, `ReadableReactiveChannel`, `WritableReactiveChannel`, `BotResponse` |
 | `telegram-bot-poller`       | Polls updates from Telegram (`TelegramBotUpdatePoller`) and dispatches outbound responses (`TelegramBotReplier`) |
-| `telegram-bot-queue-pulsar` | Apache Pulsar implementation of `ReadableReactiveChannel` and `WritableReactiveChannel` using Pulsar Reactive API |
+| `telegram-bot-queue-pulsar` | Apache Pulsar implementation of `ReadableReactiveChannel` and `WritableReactiveChannel` using Pulsar Consumer/Producer APIs |
 
 ## Architecture
 
@@ -27,7 +27,7 @@ graph LR
     Replier -- sends responses --> TG
 ```
 
-The `TelegramBotUpdatePoller` returns a reactive `Flux<Update>` stream. Your application processes updates and dispatches responses through `TelegramBotReplier`. For distributed architectures, use `ReadableReactiveChannel` and `WritableReactiveChannel` to decouple components via message queues (e.g., Pulsar). Channels are split into readable and writable interfaces following the principle of interface segregation.
+The `TelegramBotUpdatePoller` returns a reactive `Flux<Update>` stream. Your application processes updates and dispatches responses through `TelegramBotReplier`. For distributed architectures, use `ReadableReactiveChannel` and `WritableReactiveChannel` to decouple components via message queues (e.g., Pulsar). Channels are split into readable and writable interfaces following the principle of interface segregation. The Pulsar implementation wraps a standard Pulsar `Consumer` and `Producer`, returning raw `Message<T>` objects from `subscribe()` so callers control acknowledgment explicitly.
 
 ## Requirements
 
@@ -42,14 +42,14 @@ The `TelegramBotUpdatePoller` returns a reactive `Flux<Update>` stream. Your app
 ```kotlin
 dependencies {
     // Core client only
-    implementation("dev.alimov.telegram-bot:telegram-bot-client:1.4.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-client:1.5.0-SNAPSHOT")
 
     // Full framework
-    implementation("dev.alimov.telegram-bot:telegram-bot-core:1.4.0-SNAPSHOT")
-    implementation("dev.alimov.telegram-bot:telegram-bot-poller:1.4.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-core:1.5.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-poller:1.5.0-SNAPSHOT")
 
     // Pulsar queue (optional)
-    implementation("dev.alimov.telegram-bot:telegram-bot-queue-pulsar:1.4.0-SNAPSHOT")
+    implementation("dev.alimov.telegram-bot:telegram-bot-queue-pulsar:1.5.0-SNAPSHOT")
 }
 ```
 
@@ -60,7 +60,7 @@ dependencies {
 <dependency>
     <groupId>dev.alimov.telegram-bot</groupId>
     <artifactId>telegram-bot-core</artifactId>
-    <version>1.4.0-SNAPSHOT</version>
+    <version>1.5.0-SNAPSHOT</version>
 </dependency>
 ```
 
@@ -105,6 +105,47 @@ public class Example {
                   return replier.dispatch(response);
               })
               .subscribe();
+    }
+}
+```
+
+### Pulsar queue integration
+
+```java
+public class PulsarExample {
+    public void run() throws Exception {
+        PulsarClient pulsarClient = PulsarClient.builder()
+                .serviceUrl("pulsar://localhost:6650")
+                .build();
+
+        // Create a readable channel wrapping a standard Pulsar Consumer
+        Consumer<String> consumer = pulsarClient.newConsumer(Schema.STRING)
+                .topic("telegram-updates")
+                .subscriptionName("my-subscription")
+                .subscriptionInitialPosition(SubscriptionInitialPosition.Earliest)
+                .subscriptionMode(SubscriptionMode.Durable)
+                .subscriptionType(SubscriptionType.Shared)
+                .subscribe();
+
+        var readChannel = new PulsarReadableReactiveChannel<>(consumer);
+
+        // subscribe() returns Flux<Message<T>> — acknowledge explicitly
+        readChannel.subscribe()
+                   .flatMap(msg -> {
+                       System.out.println("Received: " + msg.getValue());
+                       return readChannel.acknowledge(msg).thenReturn(msg);
+                   })
+                   .subscribe();
+
+        // Create a writable channel wrapping a standard Pulsar Producer
+        Producer<String> producer = pulsarClient.newProducer(Schema.STRING)
+                .topic("telegram-updates")
+                .create();
+
+        var writeChannel = new PulsarWritableReactiveChannel<>(producer);
+
+        writeChannel.publish("Hello from Pulsar!")
+                    .subscribe(messageId -> System.out.println("Published: " + messageId));
     }
 }
 ```
