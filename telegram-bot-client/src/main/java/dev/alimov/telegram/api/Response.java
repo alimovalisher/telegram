@@ -10,6 +10,17 @@ public class Response<T> {
 
     private T result;
 
+    private ResponseParameters parameters;
+
+    public ResponseParameters getParameters() {
+        return parameters;
+    }
+
+    public Response<T> setParameters(ResponseParameters parameters) {
+        this.parameters = parameters;
+        return this;
+    }
+
     public boolean isOk() {
         return ok;
     }
