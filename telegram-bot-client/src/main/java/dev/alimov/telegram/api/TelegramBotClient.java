@@ -13,7 +13,9 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 
 public class TelegramBotClient {
 
@@ -57,7 +59,15 @@ public class TelegramBotClient {
                                  if (response.isOk()) {
                                      return Mono.just(response);
                                  } else {
-                                     return Mono.error(new TelegramApiException(response.getErrorCode(), response.getDescription()));
+                                     return Mono.error(
+                                             new TelegramApiException(
+                                                     response.getErrorCode(),
+                                                     response.getDescription(),
+                                                     Optional.ofNullable(response.getParameters())
+                                                             .flatMap(param -> Optional.ofNullable(param.retryAfter()))
+                                                             .map(Duration::ofSeconds)
+                                                             .orElse(null))
+                                     );
                                  }
                              });
     }
@@ -81,7 +91,7 @@ public class TelegramBotClient {
                         .uri(endpoint + "/bot" + token, uriBuilder -> {
                             return uriBuilder
                                     .pathSegment("getUpdates")
-                                    .queryParam("offset", offset)
+                                    .queryParamIfPresent("offset", Optional.of(offset).filter(val -> val > 0))
                                     .queryParam("limit", limit)
                                     .queryParam("timeout", timeout)
                                     .queryParam("allowed_updates", allowedUpdates)

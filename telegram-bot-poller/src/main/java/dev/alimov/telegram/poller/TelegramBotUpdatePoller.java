@@ -14,9 +14,7 @@ import reactor.core.publisher.FluxSink;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Polls updates from the Telegram Bot API on a scheduled interval and publishes them
@@ -35,8 +33,6 @@ public class TelegramBotUpdatePoller implements AutoCloseable {
 
 
     private final AtomicLong lastOffset = new AtomicLong(0);
-    private final AtomicBoolean inFlight = new AtomicBoolean(false);
-    private final AtomicReference<Disposable> subscription = new AtomicReference<>();
 
     public TelegramBotUpdatePoller(
             TelegramBotClient botClient,
@@ -58,22 +54,13 @@ public class TelegramBotUpdatePoller implements AutoCloseable {
         return Flux.<Update>create(sink -> {
 
                        sink.onRequest(requested -> {
-                           Disposable disposable = pollUpdates(sink, lastOffset.get()).doOnNext(sink::next)
-                                                                                      .collectList()
-                                                                                      .expand(list -> {
-                                                                                          if (list.size() >= limit && sink.requestedFromDownstream() > 0 && !sink.isCancelled()) {
-                                                                                              return pollUpdates(sink, lastOffset.get()).collectList();
-                                                                                          }
-
-                                                                                          sink.complete();
-
-                                                                                          return Flux.empty();
-                                                                                      })
-                                                                                      .doOnError(e -> {
-                                                                                          sink.error(e);
-                                                                                      })
-                                                                                      .subscribeOn(Schedulers.boundedElastic())
-                                                                                      .subscribe();
+                           Disposable disposable = pollUpdates(sink).doOnNext(sink::next)
+                                                                    .doOnError(e -> {
+                                                                        sink.error(e);
+                                                                    })
+                                                                    .doOnComplete(() -> sink.complete())
+                                                                    .subscribeOn(Schedulers.boundedElastic())
+                                                                    .subscribe();
 
 
                            sink.onDispose(disposable);
@@ -87,17 +74,18 @@ public class TelegramBotUpdatePoller implements AutoCloseable {
     }
 
     @VisibleForTesting
-    Flux<Update> pollUpdates(FluxSink<Update> sink, long offset) {
-        if (sink.isCancelled() || !inFlight.compareAndSet(false, true)) {
-            log.debug("sink has been cancelled or can't set inFlight. sink: {} inFlight: {}", sink.isCancelled(), inFlight);
+    Flux<Update> pollUpdates(FluxSink<Update> sink) {
+        if (sink.isCancelled()) {
+            log.debug("sink has been cancelled or can't set inFlight. sink: {}", sink);
             return Flux.empty();
         }
 
 
         if (sink.requestedFromDownstream() <= 0) { // no more elements
-            inFlight.set(false);
             return Flux.empty();
         }
+
+        long offset = lastOffset.get();
 
         return botClient.getUpdates(offset, limit, timeout, allowedUpdates)
                         .onErrorResume(WebClientRequestException.class, e -> {
@@ -127,14 +115,7 @@ public class TelegramBotUpdatePoller implements AutoCloseable {
 
     @Override
     public void close() {
-        inFlight.set(false);
-        subscription.getAndUpdate(disposable -> {
-            if (disposable != null && !disposable.isDisposed()) {
-                disposable.dispose();
-            }
 
-            return null;
-        });
         log.info("TelegramUpdatePoller stopped");
     }
 }
